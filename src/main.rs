@@ -1,19 +1,15 @@
-mod git;
-mod github;
-mod jujutsu;
-
 use anyhow::Context;
 use anyhow::Result;
 use clap::Parser;
 use clap::Subcommand;
 use colored::Colorize;
 use futures::future::join_all;
-use git::GitOps;
-use git::RealGit;
-use github::GithubOps;
-use github::RealGithub;
-use jujutsu::JujutsuOps;
-use jujutsu::RealJujutsu;
+use jr::git::GitOps;
+use jr::git::RealGit;
+use jr::github::GithubOps;
+use jr::github::RealGithub;
+use jr::jujutsu::JujutsuOps;
+use jr::jujutsu::RealJujutsu;
 
 /// Prefix used for all branches
 const GLOBAL_BRANCH_PREFIX: &str = "jnb/";
@@ -606,9 +602,9 @@ async fn main() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use git::MockGit;
-    use github::MockGithub;
-    use jujutsu::MockJujutsu;
+    use jr::git::MockGit;
+    use jr::github::MockGithub;
+    use jr::jujutsu::MockJujutsu;
 
     use super::*;
 

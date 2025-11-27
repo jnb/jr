@@ -187,7 +187,6 @@ impl JujutsuOps for RealJujutsu {
 // -----------------------------------------------------------------------------
 // MockJujutsu
 
-#[cfg(test)]
 pub struct MockJujutsu {
     pub change_id: String,
     pub commit_id: String,
@@ -199,7 +198,6 @@ pub struct MockJujutsu {
     pub change_to_parents: std::collections::HashMap<String, Vec<String>>,
 }
 
-#[cfg(test)]
 impl JujutsuOps for MockJujutsu {
     fn get_commit_id(&self, revision: &str) -> Result<String> {
         // First try to find in the map by change_id

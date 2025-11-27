@@ -29,6 +29,9 @@ pub trait GithubOps {
 
     /// Edit an existing PR and return the PR URL
     async fn pr_edit(&self, pr_branch: &str, base_branch: &str) -> Result<String>;
+
+    /// Delete a remote branch
+    async fn delete_branch(&self, branch: &str) -> Result<()>;
 }
 
 // -----------------------------------------------------------------------------
@@ -180,12 +183,30 @@ impl GithubOps for RealGithub {
 
         Ok(String::from_utf8(url_output.stdout)?.trim().to_string())
     }
+
+    async fn delete_branch(&self, branch: &str) -> Result<()> {
+        let api_path = format!("/repos/:owner/:repo/git/refs/heads/{}", branch);
+
+        let output = Command::new("gh")
+            .args(["api", "-X", "DELETE", &api_path])
+            .output()
+            .await
+            .context("Failed to execute gh command")?;
+
+        if !output.status.success() {
+            return Err(anyhow!(
+                "gh command failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+
+        Ok(())
+    }
 }
 
 // -----------------------------------------------------------------------------
 // MockGithub
 
-#[cfg(test)]
 pub struct MockGithub {
     pub branch_prefix: String,
     pub branches: Vec<String>,
@@ -196,7 +217,6 @@ pub struct MockGithub {
     pub edited_prs: std::cell::RefCell<Vec<(String, String)>>,
 }
 
-#[cfg(test)]
 impl MockGithub {
     pub fn new(branch_prefix: String) -> Self {
         Self {
@@ -235,7 +255,6 @@ impl MockGithub {
     }
 }
 
-#[cfg(test)]
 #[async_trait(?Send)]
 impl GithubOps for MockGithub {
     async fn find_branches_with_prefix(&self, prefix: &str) -> Result<Vec<String>> {
@@ -280,5 +299,10 @@ impl GithubOps for MockGithub {
             .borrow_mut()
             .push((pr_branch.to_string(), base_branch.to_string()));
         Ok(format!("https://github.com/test/repo/pull/123"))
+    }
+
+    async fn delete_branch(&self, _branch: &str) -> Result<()> {
+        // Mock implementation - does nothing
+        Ok(())
     }
 }

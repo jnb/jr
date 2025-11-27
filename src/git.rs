@@ -148,7 +148,6 @@ impl GitOps for RealGit {
 // -----------------------------------------------------------------------------
 // MockGithub
 
-#[cfg(test)]
 pub struct MockGit {
     pub tree: String,
     pub trees: std::collections::HashMap<String, String>,
@@ -159,7 +158,6 @@ pub struct MockGit {
     pub ancestors: std::collections::HashMap<String, Vec<String>>,
 }
 
-#[cfg(test)]
 impl MockGit {
     pub fn new() -> Self {
         Self {
@@ -192,7 +190,6 @@ impl MockGit {
     }
 }
 
-#[cfg(test)]
 impl GitOps for MockGit {
     fn get_tree(&self, commit_id: &str) -> Result<String> {
         Ok(self
