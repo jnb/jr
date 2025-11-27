@@ -20,10 +20,6 @@ pub trait GitOps {
     /// Returns true if `commit` is reachable from `descendant` by following parent links.
     /// In other words, returns true if `descendant` contains all changes from `commit`.
     fn is_ancestor(&self, commit: &str, descendant: &str) -> Result<bool>;
-
-    /// Get a canonical representation of the changes introduced by a commit.
-    /// Returns a string representing the diff (file names and status) that can be compared.
-    fn get_commit_diff(&self, commit_id: &str) -> Result<String>;
 }
 
 // -----------------------------------------------------------------------------
@@ -147,25 +143,6 @@ impl GitOps for RealGit {
         // Exit code 0 means it is an ancestor, 1 means it's not
         Ok(output.status.success())
     }
-
-    fn get_commit_diff(&self, commit_id: &str) -> Result<String> {
-        // Use diff-tree to get the full textual diff introduced by this commit
-        // -p: generate patch (full diff with +/- lines)
-        // --no-commit-id: don't show the commit ID in output
-        let output = Command::new("git")
-            .args(["diff-tree", "-p", "--no-commit-id", commit_id])
-            .output()
-            .context("Failed to execute git command")?;
-
-        if !output.status.success() {
-            return Err(anyhow!(
-                "git command failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            ));
-        }
-
-        Ok(String::from_utf8(output.stdout)?.trim().to_string())
-    }
 }
 
 // -----------------------------------------------------------------------------
@@ -180,7 +157,6 @@ pub struct MockGit {
     pub updated_branches: std::cell::RefCell<Vec<(String, String)>>,
     pub pushed_branches: std::cell::RefCell<Vec<String>>,
     pub ancestors: std::collections::HashMap<String, Vec<String>>,
-    pub diffs: std::collections::HashMap<String, String>,
 }
 
 #[cfg(test)]
@@ -194,7 +170,6 @@ impl MockGit {
             updated_branches: std::cell::RefCell::new(Vec::new()),
             pushed_branches: std::cell::RefCell::new(Vec::new()),
             ancestors: std::collections::HashMap::new(),
-            diffs: std::collections::HashMap::new(),
         }
     }
 
@@ -213,11 +188,6 @@ impl MockGit {
             .entry(descendant)
             .or_insert_with(Vec::new)
             .push(commit);
-        self
-    }
-
-    pub fn with_diff(mut self, commit: String, diff: String) -> Self {
-        self.diffs.insert(commit, diff);
         self
     }
 }
@@ -265,12 +235,5 @@ impl GitOps for MockGit {
             .get(descendant)
             .map(|ancestors| ancestors.contains(&commit.to_string()))
             .unwrap_or(false))
-    }
-
-    fn get_commit_diff(&self, commit_id: &str) -> Result<String> {
-        self.diffs
-            .get(commit_id)
-            .cloned()
-            .ok_or_else(|| anyhow!("Diff not found for commit: {}", commit_id))
     }
 }

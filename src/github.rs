@@ -29,9 +29,6 @@ pub trait GithubOps {
 
     /// Edit an existing PR and return the PR URL
     async fn pr_edit(&self, pr_branch: &str, base_branch: &str) -> Result<String>;
-
-    /// Get the diff for a PR (cumulative diff from base to head)
-    async fn pr_diff(&self, pr_branch: &str) -> Result<String>;
 }
 
 // -----------------------------------------------------------------------------
@@ -183,23 +180,6 @@ impl GithubOps for RealGithub {
 
         Ok(String::from_utf8(url_output.stdout)?.trim().to_string())
     }
-
-    async fn pr_diff(&self, pr_branch: &str) -> Result<String> {
-        let output = Command::new("gh")
-            .args(["pr", "diff", pr_branch])
-            .output()
-            .await
-            .context("Failed to execute gh command")?;
-
-        if !output.status.success() {
-            return Err(anyhow!(
-                "gh command failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            ));
-        }
-
-        Ok(String::from_utf8(output.stdout)?.trim().to_string())
-    }
 }
 
 // -----------------------------------------------------------------------------
@@ -214,7 +194,6 @@ pub struct MockGithub {
     pub pr_urls: std::cell::RefCell<std::collections::HashMap<String, String>>,
     pub created_prs: std::cell::RefCell<Vec<(String, String)>>,
     pub edited_prs: std::cell::RefCell<Vec<(String, String)>>,
-    pub pr_diffs: std::cell::RefCell<std::collections::HashMap<String, String>>,
 }
 
 #[cfg(test)]
@@ -228,7 +207,6 @@ impl MockGithub {
             pr_urls: std::cell::RefCell::new(std::collections::HashMap::new()),
             created_prs: std::cell::RefCell::new(Vec::new()),
             edited_prs: std::cell::RefCell::new(Vec::new()),
-            pr_diffs: std::cell::RefCell::new(std::collections::HashMap::new()),
         }
     }
 
@@ -253,11 +231,6 @@ impl MockGithub {
             branch.clone(),
             format!("https://github.com/test/repo/pull/{}", branch),
         );
-        self
-    }
-
-    pub fn with_pr_diff(self, branch: String, diff: String) -> Self {
-        self.pr_diffs.borrow_mut().insert(branch, diff);
         self
     }
 }
@@ -307,13 +280,5 @@ impl GithubOps for MockGithub {
             .borrow_mut()
             .push((pr_branch.to_string(), base_branch.to_string()));
         Ok(format!("https://github.com/test/repo/pull/123"))
-    }
-
-    async fn pr_diff(&self, pr_branch: &str) -> Result<String> {
-        self.pr_diffs
-            .borrow()
-            .get(pr_branch)
-            .cloned()
-            .ok_or_else(|| anyhow!("PR diff not found for branch: {}", pr_branch))
     }
 }
