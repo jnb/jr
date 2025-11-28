@@ -2,6 +2,8 @@ pub mod git;
 pub mod github;
 pub mod jujutsu;
 
+use std::collections::HashMap;
+
 use anyhow::Context;
 use anyhow::Result;
 use clap::Parser;
@@ -231,12 +233,12 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
             msg.to_string()
         } else {
             // No message provided - check if this is a pure restack
-            // Compare local tree vs PR branch tree
-            let pr_commit_id = self.git.get_branch(&pr_branch)?;
-            let pr_tree = self.git.get_tree(&pr_commit_id)?;
+            // Compare local single commit diff vs cumulative PR diff from GitHub
+            let local_change_diff = self.git.get_commit_diff(&commit_id)?;
+            let pr_cumulative_diff = self.gh.pr_diff(&pr_branch).await?;
 
-            if tree == pr_tree {
-                // Pure restack - the tree content is the same
+            if local_change_diff == pr_cumulative_diff {
+                // Pure restack - the change content is the same
                 writeln!(stdout, "Detected pure restack (no changes to this commit)")?;
                 "Restack".to_string()
             } else {
@@ -333,6 +335,42 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         // Fetch all branches once
         let all_branches = self.gh.find_branches_with_prefix("").await?;
 
+        // Collect all unique branches we need pr_diffs for (changes + their parents)
+        let mut branches_needing_diffs = std::collections::HashSet::new();
+        for (change_id, _commit_id) in &changes {
+            let short_change_id = &change_id[..CHANGE_ID_LENGTH.min(change_id.len())];
+            let expected_branch = format!("{}{}", GLOBAL_BRANCH_PREFIX, short_change_id);
+            if all_branches.contains(&expected_branch) {
+                branches_needing_diffs.insert(expected_branch);
+            }
+
+            // Also collect parent branches
+            if let Ok(parent_change_ids) = self.jj.get_parent_change_ids(change_id) {
+                for parent_change_id in parent_change_ids {
+                    let short_parent_id =
+                        &parent_change_id[..CHANGE_ID_LENGTH.min(parent_change_id.len())];
+                    let parent_branch = format!("{}{}", GLOBAL_BRANCH_PREFIX, short_parent_id);
+                    if all_branches.contains(&parent_branch) {
+                        branches_needing_diffs.insert(parent_branch);
+                    }
+                }
+            }
+        }
+
+        // Fetch all pr_diffs in parallel
+        let pr_diff_futures: Vec<_> = branches_needing_diffs
+            .iter()
+            .map(|branch| async move {
+                let diff = self.gh.pr_diff(branch).await;
+                (branch.clone(), diff)
+            })
+            .collect();
+        let pr_diff_results = join_all(pr_diff_futures).await;
+        let pr_diffs: HashMap<String, String> = pr_diff_results
+            .into_iter()
+            .filter_map(|(branch, result)| result.ok().map(|diff| (branch, diff)))
+            .collect();
+
         // Prepare tasks to fetch PR URLs concurrently
         let pr_url_futures: Vec<_> = changes
             .iter()
@@ -375,7 +413,8 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
             let abbreviated_change_id = &change_id[..4.min(change_id.len())];
 
             // Check if parent PR is outdated
-            let parent_pr_outdated = self.is_parent_pr_outdated(change_id, &all_branches)?;
+            let parent_pr_outdated =
+                self.is_parent_pr_outdated(change_id, &all_branches, &pr_diffs)?;
 
             // Get base branch (or default to empty string if error)
             let base_branch = base_branch_result.as_ref().ok();
@@ -391,6 +430,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
                 abbreviated_change_id,
                 parent_pr_outdated,
                 base_branch,
+                &pr_diffs,
                 stdout,
             )
             .await?;
@@ -400,9 +440,14 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
     }
 
     /// Check if any parent PR is out of date
-    /// A parent is outdated if its local tree differs from the PR branch tree,
+    /// A parent is outdated if its local single commit diff differs from cumulative remote diff,
     /// or if the parent itself needs a restack (recursive check)
-    fn is_parent_pr_outdated(&self, revision: &str, all_branches: &[String]) -> Result<bool> {
+    fn is_parent_pr_outdated(
+        &self,
+        revision: &str,
+        all_branches: &[String],
+        pr_diffs: &HashMap<String, String>,
+    ) -> Result<bool> {
         // Get parent change IDs from jujutsu
         let parent_change_ids = self.jj.get_parent_change_ids(revision)?;
 
@@ -413,19 +458,32 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
 
             // If this parent has a PR branch, check if it's outdated
             if all_branches.contains(&parent_branch) {
-                // Compare parent's local tree vs PR branch tree
+                // Compare parent's local single commit diff vs cumulative PR diff from cache
                 let parent_commit_id = self.jj.get_commit_id(&parent_change_id)?;
-                let parent_local_tree = self.git.get_tree(&parent_commit_id)?;
+                let parent_local_diff = self.git.get_commit_diff(&parent_commit_id)?;
 
-                if let Ok(pr_commit_id) = self.git.get_branch(&parent_branch) {
-                    let pr_tree = self.git.get_tree(&pr_commit_id)?;
-                    if parent_local_tree != pr_tree {
+                if let Some(parent_pr_diff) = pr_diffs.get(&parent_branch) {
+                    if &parent_local_diff != parent_pr_diff {
                         return Ok(true); // Parent has local changes
                     }
                 }
 
+                // Check if parent's base has moved
+                if let Ok(parent_base_branch) =
+                    self.find_previous_branch(&parent_change_id, all_branches)
+                {
+                    if let Ok(parent_pr_commit) = self.git.get_branch(&parent_branch) {
+                        if let Ok(base_tip) = self.git.get_branch(&parent_base_branch) {
+                            // If base is not an ancestor of parent's PR, base has moved
+                            if !self.git.is_ancestor(&base_tip, &parent_pr_commit)? {
+                                return Ok(true); // Parent's base has moved, needs restack
+                            }
+                        }
+                    }
+                }
+
                 // Recursively check if the parent itself needs a restack
-                if self.is_parent_pr_outdated(&parent_change_id, all_branches)? {
+                if self.is_parent_pr_outdated(&parent_change_id, all_branches, pr_diffs)? {
                     return Ok(true); // Parent's ancestor is outdated
                 }
             }
@@ -447,6 +505,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         abbreviated_change_id: &str,
         parent_pr_outdated: bool,
         _base_branch: Option<&String>,
+        pr_diffs: &HashMap<String, String>,
         stdout: &mut impl std::io::Write,
     ) -> Result<()> {
         let is_current = change_id == current_change_id;
@@ -457,53 +516,55 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
             // Check if PR exists
             match pr_url_result {
                 Ok(Some(_)) => {
-                    // Compare local tree vs PR branch tree
-                    let local_tree = self.git.get_tree(commit_id);
+                    // Compare local single commit diff vs cumulative PR diff from cache
+                    let local_diff = self.git.get_commit_diff(commit_id);
 
-                    match local_tree {
-                        Ok(local_tree) => {
-                            if let Ok(pr_commit_id) = self.git.get_branch(expected_branch) {
-                                if let Ok(pr_tree) = self.git.get_tree(&pr_commit_id) {
-                                    // Check if base branch has moved (not an ancestor of PR branch)
-                                    let base_has_moved = if let Some(base_branch) = _base_branch {
+                    match local_diff {
+                        Ok(local_diff) => {
+                            if let Some(pr_diff) = pr_diffs.get(expected_branch) {
+                                // Check if base branch has moved (not an ancestor of PR branch)
+                                let base_has_moved = if let Some(base_branch) = _base_branch {
+                                    // Get PR branch tip
+                                    if let Ok(pr_branch_tip) = self.git.get_branch(expected_branch)
+                                    {
                                         // Get base branch tip
                                         if let Ok(base_tip) = self.git.get_branch(base_branch) {
                                             // If base is not an ancestor of PR, base has moved
                                             !self
                                                 .git
-                                                .is_ancestor(&base_tip, &pr_commit_id)
+                                                .is_ancestor(&base_tip, &pr_branch_tip)
                                                 .unwrap_or(false)
                                         } else {
                                             false
                                         }
                                     } else {
                                         false
-                                    };
-
-                                    if local_tree == pr_tree {
-                                        // Trees match - check if parent changed or base moved
-                                        if parent_pr_outdated || base_has_moved {
-                                            "↻" // Needs restack (parent changed or base moved)
-                                        } else {
-                                            "✓" // Up to date
-                                        }
-                                    } else {
-                                        "✗" // Has local changes
                                     }
                                 } else {
-                                    "-"
+                                    false
+                                };
+
+                                if &local_diff == pr_diff {
+                                    // Diffs match - check if parent changed or base moved
+                                    if parent_pr_outdated || base_has_moved {
+                                        "↻" // Needs restack (parent changed or base moved)
+                                    } else {
+                                        "✓" // Up to date
+                                    }
+                                } else {
+                                    "✗" // Has local changes
                                 }
                             } else {
-                                "-"
+                                "?"
                             }
                         }
-                        _ => "-",
+                        _ => "?",
                     }
                 }
-                Ok(None) | Err(_) => "-",
+                Ok(None) | Err(_) => "?",
             }
         } else {
-            "-"
+            "?"
         };
 
         // Display status symbol + abbreviated change ID (cyan) + title (white) on first line
@@ -569,13 +630,13 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         let branches_to_check: Vec<_> = stack_changes
             .iter()
             .filter(|(_, commit_id_in_stack)| commit_id_in_stack != &commit_id)
-            .filter_map(|(change_id, commit_id_in_stack)| {
+            .filter_map(|(change_id, _commit_id_in_stack)| {
                 let short_change_id = &change_id[..CHANGE_ID_LENGTH.min(change_id.len())];
                 let expected_branch = format!("{}{}", GLOBAL_BRANCH_PREFIX, short_change_id);
                 if all_branches.contains(&expected_branch) {
                     Some((
                         change_id.clone(),
-                        commit_id_in_stack.clone(),
+                        _commit_id_in_stack.clone(),
                         expected_branch,
                     ))
                 } else {
@@ -584,14 +645,30 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
             })
             .collect();
 
-        // Check each change in the stack
-        for (_change_id, commit_id_in_stack, expected_branch) in branches_to_check {
-            // Compare local tree vs PR branch tree
-            let local_tree = self.git.get_tree(&commit_id_in_stack)?;
-            let pr_commit_id = self.git.get_branch(&expected_branch)?;
-            let pr_tree = self.git.get_tree(&pr_commit_id)?;
+        // Fetch all pr_diffs in parallel
+        let pr_diff_futures: Vec<_> = branches_to_check
+            .iter()
+            .map(|(_, _, branch)| async move {
+                let diff = self.gh.pr_diff(branch).await;
+                (branch.clone(), diff)
+            })
+            .collect();
+        let pr_diff_results = join_all(pr_diff_futures).await;
 
-            if local_tree != pr_tree {
+        // Check each change in the stack
+        for ((change_id, _, expected_branch), (_, pr_diff_result)) in
+            branches_to_check.iter().zip(pr_diff_results.iter())
+        {
+            // Get the commit ID for this change
+            let commit_id_in_stack = self.jj.get_commit_id(change_id)?;
+
+            // Compare local single commit diff vs cumulative PR diff from GitHub
+            let local_diff = self.git.get_commit_diff(&commit_id_in_stack)?;
+            let pr_diff = pr_diff_result
+                .as_ref()
+                .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+            if &local_diff != pr_diff {
                 return Err(anyhow::anyhow!(
                     "Cannot update PR: parent PR {} is out of date. Update parent PRs first (starting from the bottom of the stack).",
                     expected_branch
@@ -752,10 +829,13 @@ mod tests {
         let mock_git = MockGit::new()
             .with_branch("jnb/abc12345".to_string(), "remote_commit".to_string())
             .with_tree("local_commit".to_string(), "same_tree".to_string())
-            .with_tree("remote_commit".to_string(), "same_tree".to_string());
+            .with_tree("remote_commit".to_string(), "same_tree".to_string())
+            .with_diff("local_commit".to_string(), "M\tsrc/main.rs".to_string())
+            .with_diff("remote_commit".to_string(), "M\tsrc/main.rs".to_string());
         let mock_gh = MockGithub::new(GLOBAL_BRANCH_PREFIX.to_string())
             .with_branches(vec!["jnb/abc12345".to_string()])
-            .with_pr("jnb/abc12345".to_string());
+            .with_pr("jnb/abc12345".to_string())
+            .with_pr_diff("jnb/abc12345".to_string(), "M\tsrc/main.rs".to_string());
 
         let app = App::new(mock_jj, mock_git, mock_gh);
 
@@ -785,10 +865,16 @@ mod tests {
         let mock_git = MockGit::new()
             .with_branch("jnb/abc12345".to_string(), "remote_commit".to_string())
             .with_tree("local_commit".to_string(), "new_tree".to_string())
-            .with_tree("remote_commit".to_string(), "old_tree".to_string());
+            .with_tree("remote_commit".to_string(), "old_tree".to_string())
+            .with_diff(
+                "local_commit".to_string(),
+                "M\tsrc/main.rs\nA\tsrc/new.rs".to_string(),
+            )
+            .with_diff("remote_commit".to_string(), "M\tsrc/main.rs".to_string());
         let mock_gh = MockGithub::new(GLOBAL_BRANCH_PREFIX.to_string())
             .with_branches(vec!["jnb/abc12345".to_string()])
-            .with_pr("jnb/abc12345".to_string());
+            .with_pr("jnb/abc12345".to_string())
+            .with_pr_diff("jnb/abc12345".to_string(), "M\tsrc/main.rs".to_string());
 
         let app = App::new(mock_jj, mock_git, mock_gh);
 
@@ -1048,10 +1134,18 @@ mod tests {
             .with_tree("commit_b_remote".to_string(), "tree_b_old".to_string())
             // C's trees
             .with_tree("commit_c_local".to_string(), "tree_c".to_string())
-            .with_tree("commit_c_remote".to_string(), "tree_c".to_string());
+            .with_tree("commit_c_remote".to_string(), "tree_c".to_string())
+            // B's local diff differs from remote (outdated)
+            .with_diff("commit_b_local".to_string(), "diff --git a/src/file.rs b/src/file.rs\n--- a/src/file.rs\n+++ b/src/file.rs\n@@ -1,1 +1,2 @@\n content\n+new line\ndiff --git a/src/new.rs b/src/new.rs\nnew file\n--- /dev/null\n+++ b/src/new.rs\n@@ -0,0 +1,1 @@\n+// new".to_string())
+            .with_diff("commit_b_remote".to_string(), "diff --git a/src/file.rs b/src/file.rs\n--- a/src/file.rs\n+++ b/src/file.rs\n@@ -1,1 +1,2 @@\n content\n+old line".to_string())
+            // C's diffs
+            .with_diff("commit_c_local".to_string(), "diff --git a/src/other.rs b/src/other.rs\n--- a/src/other.rs\n+++ b/src/other.rs\n@@ -1,1 +1,2 @@\n content\n+change".to_string())
+            .with_diff("commit_c_remote".to_string(), "diff --git a/src/other.rs b/src/other.rs\n--- a/src/other.rs\n+++ b/src/other.rs\n@@ -1,1 +1,2 @@\n content\n+change".to_string());
         let mock_gh = MockGithub::new(GLOBAL_BRANCH_PREFIX.to_string())
             .with_branches(vec!["jnb/bbb12345".to_string(), "jnb/ccc12345".to_string()])
-            .with_pr("jnb/ccc12345".to_string());
+            .with_pr("jnb/ccc12345".to_string())
+            // PR diffs (cumulative diffs from GitHub)
+            .with_pr_diff("jnb/bbb12345".to_string(), "diff --git a/src/file.rs b/src/file.rs\n--- a/src/file.rs\n+++ b/src/file.rs\n@@ -1,1 +1,2 @@\n content\n+old line".to_string());
 
         let app = App::new(mock_jj, mock_git, mock_gh);
 
@@ -1084,10 +1178,15 @@ mod tests {
             .with_branch("jnb/abc12345".to_string(), "remote_commit".to_string())
             .with_tree("local_commit".to_string(), "same_tree".to_string())
             .with_tree("remote_commit".to_string(), "same_tree".to_string())
-            .with_tree("main_commit".to_string(), "main_tree".to_string());
+            .with_tree("main_commit".to_string(), "main_tree".to_string())
+            // Both commits introduce the same changes (just rebased)
+            .with_diff("local_commit".to_string(), "diff --git a/src/main.rs b/src/main.rs\nindex 123..456\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1,1 +1,2 @@\n fn main() {}\n+// comment".to_string())
+            .with_diff("remote_commit".to_string(), "diff --git a/src/main.rs b/src/main.rs\nindex 123..456\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1,1 +1,2 @@\n fn main() {}\n+// comment".to_string());
         let mock_gh = MockGithub::new(GLOBAL_BRANCH_PREFIX.to_string())
             .with_branches(vec!["jnb/abc12345".to_string()])
-            .with_pr("jnb/abc12345".to_string());
+            .with_pr("jnb/abc12345".to_string())
+            // PR diff (cumulative diff from GitHub)
+            .with_pr_diff("jnb/abc12345".to_string(), "diff --git a/src/main.rs b/src/main.rs\nindex 123..456\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1,1 +1,2 @@\n fn main() {}\n+// comment".to_string());
 
         let app = App::new(mock_jj, mock_git, mock_gh);
 
@@ -1118,10 +1217,15 @@ mod tests {
             .with_branch("jnb/abc12345".to_string(), "remote_commit".to_string())
             .with_tree("local_commit".to_string(), "new_tree".to_string())
             .with_tree("remote_commit".to_string(), "old_tree".to_string())
-            .with_tree("main_commit".to_string(), "main_tree".to_string());
+            .with_tree("main_commit".to_string(), "main_tree".to_string())
+            // Local commit introduces an extra file compared to remote
+            .with_diff("local_commit".to_string(), "diff --git a/src/main.rs b/src/main.rs\nindex 123..456\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1,1 +1,2 @@\n fn main() {}\n+// comment\ndiff --git a/src/new.rs b/src/new.rs\nnew file\n--- /dev/null\n+++ b/src/new.rs\n@@ -0,0 +1,1 @@\n+// new file".to_string())
+            .with_diff("remote_commit".to_string(), "diff --git a/src/main.rs b/src/main.rs\nindex 123..456\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1,1 +1,2 @@\n fn main() {}\n+// comment".to_string());
         let mock_gh = MockGithub::new(GLOBAL_BRANCH_PREFIX.to_string())
             .with_branches(vec!["jnb/abc12345".to_string()])
-            .with_pr("jnb/abc12345".to_string());
+            .with_pr("jnb/abc12345".to_string())
+            // PR diff (cumulative diff from GitHub)
+            .with_pr_diff("jnb/abc12345".to_string(), "diff --git a/src/main.rs b/src/main.rs\nindex 123..456\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1,1 +1,2 @@\n fn main() {}\n+// comment".to_string());
 
         let app = App::new(mock_jj, mock_git, mock_gh);
 

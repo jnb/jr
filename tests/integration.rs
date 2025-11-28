@@ -1,4 +1,8 @@
-//! cargo test --test integration -- --nocapture
+//! Integration tests; run as
+//!
+//!   cargo test --test integration -- --nocapture
+//!
+//! Prefix with DEBUG_TESTS=1 to keep local repos around.
 
 mod macros;
 mod utils;
@@ -15,7 +19,7 @@ const GITHUB_REPO: &str = "test_repo";
 
 const GIT_BRANCH_PREFIX: &str = "jnb/";
 
-// Normalize IDs etc.
+/// Normalize IDs for snapshot comparisons.
 static INSTA_FILTERS: LazyLock<Vec<(&'static str, &'static str)>> = LazyLock::new(|| {
     vec![
         // Change ID
@@ -93,6 +97,18 @@ async fn setup(temp_path: &std::path::Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Test the happy-path workflow for stacked PRs with our tree of three commits
+/// (see `setup`):
+///
+/// - Initially all commits show `?` (no PRs exist)
+/// - Create PRs for Alpha, Beta, and Gamma (all show ✓)
+/// - Edit Alpha (Alpha shows ✗, Beta and Gamma show ↻)
+/// - Update Alpha's PR (Alpha shows ✓, Beta and Gamma still show ↻)
+/// - Restack Beta without a message (auto-detects pure restack, Beta shows ✓, Gamma still shows ↻)
+/// - Restack Gamma without a message (all show ✓)
+///
+/// This validates that status symbols correctly propagate through the stack and
+/// that auto-restack detection works for commits that haven't been modified.
 #[tokio::test]
 #[serial]
 async fn test_stacked_workflow() -> anyhow::Result<()> {
@@ -109,10 +125,10 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
 
     let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
-        - [CHGID]
-        - [CHGID] Gamma
-        - [CHGID] Beta
-        - [CHGID] Alpha
+        ? [CHGID]
+        ? [CHGID] Gamma
+        ? [CHGID] Beta
+        ? [CHGID] Alpha
     ");
 
     // -------------------------------------------------------------------------
@@ -134,9 +150,9 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
 
     let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
-        - [CHGID]
-        - [CHGID] Gamma
-        - [CHGID] Beta
+        ? [CHGID]
+        ? [CHGID] Gamma
+        ? [CHGID] Beta
         ✓ [CHGID] Alpha
           https://github.com/[USER]/[REPO]/[PRID]
     ");
@@ -160,8 +176,8 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
 
     let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
-        - [CHGID]
-        - [CHGID] Gamma
+        ? [CHGID]
+        ? [CHGID] Gamma
         ✓ [CHGID] Beta
           https://github.com/[USER]/[REPO]/[PRID]
         ✓ [CHGID] Alpha
@@ -187,7 +203,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
 
     let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
-        - [CHGID]
+        ? [CHGID]
         ✓ [CHGID] Gamma
           https://github.com/[USER]/[REPO]/[PRID]
         ✓ [CHGID] Beta
@@ -197,7 +213,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     ");
 
     // -------------------------------------------------------------------------
-    // Edit Alpha commit
+    // Edit Alpha
 
     utils::jj_edit(test_dir.path(), "description(Alpha) & mine()").await?;
     tokio::fs::write(test_dir.path().join("alpha"), "alpha1\n").await?;
@@ -212,15 +228,97 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
           https://github.com/[USER]/[REPO]/[PRID]
     ");
 
-    // TODO
-    // - Locally edit Alpha
-    //   check alpha has a "✗" status, and beta and gamma "↻" statuses
-    // - Update alpha
-    //   check alpha has a "✓" status, and beta and gamma have "↻" statuses
-    // - Update beta
-    //   check alpha and beta have "✓" statuses, and gamma has a "↻" status
-    // - Update gamma
-    //   check alpha, beta and gamma have "✓" statuses
+    // -------------------------------------------------------------------------
+    // Update Alpha
+
+    let (out, _) = run_and_capture!(|out, _| app.cmd_update(
+        "description(Alpha) & mine()",
+        Some("Update alpha"),
+        out
+    ));
+    assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
+        Change ID: [CHGID]
+        Commit ID: [OBJID]
+        PR branch: [BRANCH]
+        Base branch: master
+        Tree: [OBJID]
+        PR branch [BRANCH] exists
+        Created new merge commit: [OBJID]
+        Updated PR branch [BRANCH]
+        Pushed PR branch [BRANCH]
+        Updated PR for [BRANCH] with base master
+        PR URL: https://github.com/[USER]/[REPO]/[PRID]
+    ");
+
+    let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
+    assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
+        ↻ [CHGID] Gamma
+          https://github.com/[USER]/[REPO]/[PRID]
+        ↻ [CHGID] Beta
+          https://github.com/[USER]/[REPO]/[PRID]
+        ✓ [CHGID] Alpha
+          https://github.com/[USER]/[REPO]/[PRID]
+    ");
+
+    // -------------------------------------------------------------------------
+    // Update Beta
+
+    let (out, _) =
+        run_and_capture!(|out, _| app.cmd_update("description(Beta) & mine()", None, out));
+    assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
+        Change ID: [CHGID]
+        Commit ID: [OBJID]
+        PR branch: [BRANCH]
+        Base branch: [BRANCH]
+        Tree: [OBJID]
+        PR branch [BRANCH] exists
+        Detected pure restack (no changes to this commit)
+        Created new merge commit: [OBJID]
+        Updated PR branch [BRANCH]
+        Pushed PR branch [BRANCH]
+        Updated PR for [BRANCH] with base [BRANCH]
+        PR URL: https://github.com/[USER]/[REPO]/[PRID]
+    ");
+
+    let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
+    assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
+        ↻ [CHGID] Gamma
+          https://github.com/[USER]/[REPO]/[PRID]
+        ✓ [CHGID] Beta
+          https://github.com/[USER]/[REPO]/[PRID]
+        ✓ [CHGID] Alpha
+          https://github.com/[USER]/[REPO]/[PRID]
+    ");
+
+    // -------------------------------------------------------------------------
+    // Update Gamma
+
+    let (out, _) =
+        run_and_capture!(|out, _| app.cmd_update("description(Gamma) & mine()", None, out));
+    assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
+        Change ID: [CHGID]
+        Commit ID: [OBJID]
+        PR branch: [BRANCH]
+        Base branch: [BRANCH]
+        Tree: [OBJID]
+        PR branch [BRANCH] exists
+        Detected pure restack (no changes to this commit)
+        Created new merge commit: [OBJID]
+        Updated PR branch [BRANCH]
+        Pushed PR branch [BRANCH]
+        Updated PR for [BRANCH] with base [BRANCH]
+        PR URL: https://github.com/[USER]/[REPO]/[PRID]
+    ");
+
+    let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
+    assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
+        ✓ [CHGID] Gamma
+          https://github.com/[USER]/[REPO]/[PRID]
+        ✓ [CHGID] Beta
+          https://github.com/[USER]/[REPO]/[PRID]
+        ✓ [CHGID] Alpha
+          https://github.com/[USER]/[REPO]/[PRID]
+    ");
 
     Ok(())
 }
