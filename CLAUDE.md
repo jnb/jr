@@ -6,9 +6,9 @@ code in this repository.
 ## Project Overview
 
 `jr` (Jujutsu Review) is a Rust-based tool for managing Git branches and GitHub
-PRs in a stacked workflow, designed to integrate with Jujutsu (jj) version control.
-The tool automates the process of creating branches with a specific naming convention
-and managing PRs with proper base branch relationships.
+PRs in a stacked workflow, designed to integrate with Jujutsu (jj) version
+control. The tool automates the process of creating branches with a specific
+naming convention and managing PRs with proper base branch relationships.
 
 ## Key Concepts
 

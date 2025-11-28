@@ -2,6 +2,11 @@ use std::path::Path;
 use std::process::Stdio;
 
 use tokio::process::Command;
+use tracing::level_filters::LevelFilter;
+use tracing_subscriber::fmt::format::FmtSpan;
+use tracing_subscriber::layer::SubscriberExt as _;
+use tracing_subscriber::util::SubscriberInitExt as _;
+use tracing_subscriber::Layer as _;
 
 /// Creates a git repository in the given directory.
 ///
@@ -111,6 +116,20 @@ pub async fn jj_new(dir: &Path, revision: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Checks out (edits) a specific jujutsu revision.
+pub async fn jj_edit(dir: &Path, revision: &str) -> anyhow::Result<()> {
+    let status = Command::new("jj")
+        .args(["edit", revision])
+        .current_dir(dir)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .await?;
+    anyhow::ensure!(status.success(), "jj edit failed");
+
+    Ok(())
+}
+
 /// Creates a jujutsu commit with a file.
 pub async fn create_jj_commit(
     dir: &Path,
@@ -152,18 +171,42 @@ pub async fn jj_log(dir: &Path) -> anyhow::Result<String> {
     Ok(String::from_utf8(output.stdout)?)
 }
 
-/// Runs jr status and returns stdout.
-pub async fn jr_status(dir: &Path) -> anyhow::Result<String> {
-    let output = Command::new(env!("CARGO_BIN_EXE_jr"))
-        .args(["status"])
-        .current_dir(dir)
-        .output()
-        .await?;
+pub fn setup_logging() -> anyhow::Result<()> {
+    let timer = tracing_subscriber::fmt::time::ChronoLocal::new("%H:%M:%S%.3f".into());
+    let format = tracing_subscriber::fmt::format().with_timer(timer);
+    let filter = tracing_subscriber::EnvFilter::builder()
+        .with_default_directive(LevelFilter::INFO.into())
+        .from_env()?;
+    let subscriber = tracing_subscriber::fmt::layer()
+        .event_format(format)
+        .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
+        .with_filter(filter);
+    tracing_subscriber::registry().with(subscriber).init();
+    Ok(())
+}
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("jr status failed: {}", stderr);
+pub enum TestDir {
+    Temp(tempfile::TempDir),
+    Kept(std::path::PathBuf),
+}
+
+impl TestDir {
+    pub fn new() -> std::io::Result<Self> {
+        let temp_dir = tempfile::tempdir()?;
+
+        if std::env::var("DEBUG_TESTS").is_ok() {
+            let path = temp_dir.keep();
+            eprintln!("Test directory kept at: {}", path.display());
+            Ok(TestDir::Kept(path))
+        } else {
+            Ok(TestDir::Temp(temp_dir))
+        }
     }
 
-    Ok(String::from_utf8(output.stdout)?)
+    pub fn path(&self) -> &std::path::Path {
+        match self {
+            TestDir::Temp(t) => t.path(),
+            TestDir::Kept(p) => p.as_path(),
+        }
+    }
 }
