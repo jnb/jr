@@ -3,8 +3,15 @@ use clap::Parser;
 use jr::git::RealGit;
 use jr::github::RealGithub;
 use jr::jujutsu::RealJujutsu;
-use jr::{App, Cli, Commands, GLOBAL_BRANCH_PREFIX};
+use jr::App;
+use jr::Cli;
+use jr::Commands;
+use jr::GLOBAL_BRANCH_PREFIX;
 
+// TODO
+// jr create       # Create new PR
+// jr push -m      # Update existing PR
+// jr restack      # Restack on parent
 #[tokio::main]
 async fn main() -> Result<()> {
     let app = App::new(
