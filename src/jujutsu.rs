@@ -3,11 +3,14 @@ use std::process::Command;
 use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result;
+#[cfg(test)]
+use mockall::automock;
 
 // -----------------------------------------------------------------------------
 // Types
 
 /// Operations for interacting with Jujutsu version control
+#[cfg_attr(test, automock)]
 pub trait JujutsuOps {
     /// Get complete commit information for a revision
     fn get_commit(&self, revision: &str) -> Result<Commit>;
@@ -248,90 +251,5 @@ impl JujutsuOps for RealJujutsu {
 
         // If output is non-empty, commit is an ancestor of descendant
         Ok(!String::from_utf8(output.stdout)?.trim().is_empty())
-    }
-}
-
-// -----------------------------------------------------------------------------
-// MockJujutsu
-
-pub struct MockJujutsu {
-    pub change_id: String,
-    pub commit_id: String,
-    pub commit_message: String,
-    pub parent_change_ids: Vec<String>,
-    pub stack_heads: Vec<(String, String)>,
-    pub stack_changes: Vec<(String, String)>,
-    pub change_to_commit: std::collections::HashMap<String, String>,
-    pub change_to_parents: std::collections::HashMap<String, Vec<String>>,
-    pub trunk_commit_id: String,
-    pub ancestors: std::collections::HashMap<String, Vec<String>>,
-}
-
-impl JujutsuOps for MockJujutsu {
-    fn get_commit(&self, revision: &str) -> Result<Commit> {
-        // Get commit_id from map or default
-        let commit_id = if let Some(commit_id) = self.change_to_commit.get(revision) {
-            commit_id.clone()
-        } else {
-            self.commit_id.clone()
-        };
-
-        // Get parent change IDs from map or default
-        let parent_change_ids = if let Some(parents) = self.change_to_parents.get(revision) {
-            parents.clone()
-        } else {
-            self.parent_change_ids.clone()
-        };
-
-        // Parse commit message into title and body
-        let lines: Vec<&str> = self.commit_message.lines().collect();
-        let title = if lines.is_empty() {
-            None
-        } else {
-            let first_line = lines[0].trim();
-            if first_line.is_empty() {
-                None
-            } else {
-                Some(first_line.to_string())
-            }
-        };
-
-        let body = if lines.len() > 1 {
-            let body_text = lines[1..].join("\n").trim().to_string();
-            if body_text.is_empty() {
-                None
-            } else {
-                Some(body_text)
-            }
-        } else {
-            None
-        };
-
-        Ok(Commit {
-            change_id: self.change_id.clone(),
-            commit_id,
-            message: CommitMessage { title, body },
-            parent_change_ids,
-        })
-    }
-
-    fn get_stack_heads(&self) -> Result<Vec<(String, String)>> {
-        Ok(self.stack_heads.clone())
-    }
-
-    fn get_stack_changes(&self, _revision: &str) -> Result<Vec<(String, String)>> {
-        Ok(self.stack_changes.clone())
-    }
-
-    fn get_trunk_commit_id(&self) -> Result<String> {
-        Ok(self.trunk_commit_id.clone())
-    }
-
-    fn is_ancestor(&self, commit: &str, descendant: &str) -> Result<bool> {
-        Ok(self
-            .ancestors
-            .get(descendant)
-            .map(|ancestors| ancestors.contains(&commit.to_string()))
-            .unwrap_or(false))
     }
 }

@@ -3,16 +3,19 @@ use std::process::Command;
 use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result;
+#[cfg(test)]
+use mockall::automock;
 
 // -----------------------------------------------------------------------------
 // GitOps trait
 
 /// Operations for interacting with Git
+#[cfg_attr(test, automock)]
 pub trait GitOps {
     fn get_tree(&self, commit_id: &str) -> Result<String>;
     fn get_branch(&self, branch: &str) -> Result<String>;
     fn commit_tree(&self, tree: &str, parent: &str, message: &str) -> Result<String>;
-    fn commit_tree_merge(&self, tree: &str, parents: &[&str], message: &str) -> Result<String>;
+    fn commit_tree_merge(&self, tree: &str, parents: Vec<String>, message: &str) -> Result<String>;
     fn update_branch(&self, branch: &str, commit: &str) -> Result<()>;
     fn push_branch(&self, branch: &str) -> Result<()>;
 
@@ -81,14 +84,14 @@ impl GitOps for RealGit {
         Ok(String::from_utf8(output.stdout)?.trim().to_string())
     }
 
-    fn commit_tree_merge(&self, tree: &str, parents: &[&str], message: &str) -> Result<String> {
-        let mut args = vec!["commit-tree", tree];
-        for parent in parents {
-            args.push("-p");
-            args.push(parent);
+    fn commit_tree_merge(&self, tree: &str, parents: Vec<String>, message: &str) -> Result<String> {
+        let mut args = vec!["commit-tree".to_string(), tree.to_string()];
+        for parent in &parents {
+            args.push("-p".to_string());
+            args.push(parent.clone());
         }
-        args.push("-m");
-        args.push(message);
+        args.push("-m".to_string());
+        args.push(message.to_string());
 
         let output = Command::new("git")
             .args(&args)
@@ -165,109 +168,5 @@ impl GitOps for RealGit {
         }
 
         Ok(String::from_utf8(output.stdout)?.trim().to_string())
-    }
-}
-
-// -----------------------------------------------------------------------------
-// MockGithub
-
-pub struct MockGit {
-    pub tree: String,
-    pub trees: std::collections::HashMap<String, String>,
-    pub branches: std::collections::HashMap<String, String>,
-    pub commits: Vec<String>,
-    pub updated_branches: std::cell::RefCell<Vec<(String, String)>>,
-    pub pushed_branches: std::cell::RefCell<Vec<String>>,
-    pub ancestors: std::collections::HashMap<String, Vec<String>>,
-    pub diffs: std::collections::HashMap<String, String>,
-}
-
-impl MockGit {
-    pub fn new() -> Self {
-        Self {
-            tree: "tree123".to_string(),
-            trees: std::collections::HashMap::new(),
-            branches: std::collections::HashMap::new(),
-            commits: vec!["commit1".to_string(), "commit2".to_string()],
-            updated_branches: std::cell::RefCell::new(Vec::new()),
-            pushed_branches: std::cell::RefCell::new(Vec::new()),
-            ancestors: std::collections::HashMap::new(),
-            diffs: std::collections::HashMap::new(),
-        }
-    }
-
-    pub fn with_branch(mut self, branch: String, commit: String) -> Self {
-        self.branches.insert(branch, commit);
-        self
-    }
-
-    pub fn with_tree(mut self, commit: String, tree: String) -> Self {
-        self.trees.insert(commit, tree);
-        self
-    }
-
-    pub fn with_ancestor(mut self, commit: String, descendant: String) -> Self {
-        self.ancestors
-            .entry(descendant)
-            .or_insert_with(Vec::new)
-            .push(commit);
-        self
-    }
-
-    pub fn with_diff(mut self, commit: String, diff: String) -> Self {
-        self.diffs.insert(commit, diff);
-        self
-    }
-}
-
-impl GitOps for MockGit {
-    fn get_tree(&self, commit_id: &str) -> Result<String> {
-        Ok(self
-            .trees
-            .get(commit_id)
-            .cloned()
-            .unwrap_or_else(|| self.tree.clone()))
-    }
-
-    fn get_branch(&self, branch: &str) -> Result<String> {
-        self.branches
-            .get(branch)
-            .cloned()
-            .ok_or_else(|| anyhow!("Branch not found: {}", branch))
-    }
-
-    fn commit_tree(&self, _tree: &str, _parent: &str, _message: &str) -> Result<String> {
-        Ok(self.commits.get(0).unwrap().clone())
-    }
-
-    fn commit_tree_merge(&self, _tree: &str, _parents: &[&str], _message: &str) -> Result<String> {
-        Ok(self.commits.get(0).unwrap().clone())
-    }
-
-    fn update_branch(&self, branch: &str, commit: &str) -> Result<()> {
-        self.updated_branches
-            .borrow_mut()
-            .push((branch.to_string(), commit.to_string()));
-        Ok(())
-    }
-
-    fn push_branch(&self, branch: &str) -> Result<()> {
-        self.pushed_branches.borrow_mut().push(branch.to_string());
-        Ok(())
-    }
-
-    fn is_ancestor(&self, commit: &str, descendant: &str) -> Result<bool> {
-        Ok(self
-            .ancestors
-            .get(descendant)
-            .map(|ancestors| ancestors.contains(&commit.to_string()))
-            .unwrap_or(false))
-    }
-
-    fn get_commit_diff(&self, commit_id: &str) -> Result<String> {
-        self.diffs
-            .get(commit_id)
-            .cloned()
-            .ok_or_else(|| anyhow!("Diff not found for commit: {}", commit_id))
     }
 }

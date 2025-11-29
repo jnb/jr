@@ -19,5 +19,6 @@ tracing-subscriber = { version = "0.3", features = ["chrono", "env-filter"] }
 ctor = "0.2"
 insta = { version = "1.44", features = ["filters"] }
 log = "0.4"
+mockall = "0.13"
 serial_test = "3.2"
 tempfile = "3.0"

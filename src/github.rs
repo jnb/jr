@@ -3,11 +3,14 @@ use anyhow::Context;
 use anyhow::Result;
 use async_trait::async_trait;
 use tokio::process::Command;
+#[cfg(test)]
+use mockall::automock;
 
 // -----------------------------------------------------------------------------
 // GithubOps trait
 
 /// Operations for interacting with GitHub
+#[cfg_attr(test, automock)]
 #[async_trait(?Send)]
 pub trait GithubOps {
     async fn find_branches_with_prefix(&self, prefix: &str) -> Result<Vec<String>>;
@@ -220,124 +223,6 @@ impl GithubOps for RealGithub {
             ));
         }
 
-        Ok(())
-    }
-}
-
-// -----------------------------------------------------------------------------
-// MockGithub
-
-pub struct MockGithub {
-    pub branch_prefix: String,
-    pub branches: Vec<String>,
-    pub prs: std::cell::RefCell<std::collections::HashSet<String>>,
-    pub open_prs: std::cell::RefCell<std::collections::HashSet<String>>,
-    pub pr_urls: std::cell::RefCell<std::collections::HashMap<String, String>>,
-    pub created_prs: std::cell::RefCell<Vec<(String, String)>>,
-    pub edited_prs: std::cell::RefCell<Vec<(String, String)>>,
-    pub pr_diffs: std::cell::RefCell<std::collections::HashMap<String, String>>,
-}
-
-impl MockGithub {
-    pub fn new(branch_prefix: String) -> Self {
-        Self {
-            branch_prefix,
-            branches: Vec::new(),
-            prs: std::cell::RefCell::new(std::collections::HashSet::new()),
-            open_prs: std::cell::RefCell::new(std::collections::HashSet::new()),
-            pr_urls: std::cell::RefCell::new(std::collections::HashMap::new()),
-            created_prs: std::cell::RefCell::new(Vec::new()),
-            edited_prs: std::cell::RefCell::new(Vec::new()),
-            pr_diffs: std::cell::RefCell::new(std::collections::HashMap::new()),
-        }
-    }
-
-    pub fn with_branches(mut self, branches: Vec<String>) -> Self {
-        self.branches = branches;
-        self
-    }
-
-    pub fn with_pr(self, branch: String) -> Self {
-        self.prs.borrow_mut().insert(branch.clone());
-        self.open_prs.borrow_mut().insert(branch.clone());
-        self.pr_urls.borrow_mut().insert(
-            branch.clone(),
-            format!("https://github.com/test/repo/pull/{}", branch),
-        );
-        self
-    }
-
-    pub fn with_closed_pr(self, branch: String) -> Self {
-        self.prs.borrow_mut().insert(branch.clone());
-        self.pr_urls.borrow_mut().insert(
-            branch.clone(),
-            format!("https://github.com/test/repo/pull/{}", branch),
-        );
-        self
-    }
-
-    pub fn with_pr_diff(self, branch: String, diff: String) -> Self {
-        self.pr_diffs.borrow_mut().insert(branch, diff);
-        self
-    }
-}
-
-#[async_trait(?Send)]
-impl GithubOps for MockGithub {
-    async fn find_branches_with_prefix(&self, prefix: &str) -> Result<Vec<String>> {
-        let search_prefix = format!("{}{}", self.branch_prefix, prefix);
-        Ok(self
-            .branches
-            .iter()
-            .filter(|b| b.starts_with(&search_prefix))
-            .cloned()
-            .collect())
-    }
-
-    async fn pr_is_open(&self, branch: &str) -> Result<bool> {
-        Ok(self.open_prs.borrow().contains(branch))
-    }
-
-    async fn pr_url(&self, branch: &str) -> Result<Option<String>> {
-        Ok(self.pr_urls.borrow().get(branch).cloned())
-    }
-
-    async fn pr_create(
-        &self,
-        pr_branch: &str,
-        base_branch: &str,
-        _title: &str,
-        _body: &str,
-    ) -> Result<String> {
-        self.created_prs
-            .borrow_mut()
-            .push((pr_branch.to_string(), base_branch.to_string()));
-        self.prs.borrow_mut().insert(pr_branch.to_string());
-        self.open_prs.borrow_mut().insert(pr_branch.to_string());
-        let url = format!("https://github.com/test/repo/pull/123");
-        self.pr_urls
-            .borrow_mut()
-            .insert(pr_branch.to_string(), url.clone());
-        Ok(url)
-    }
-
-    async fn pr_edit(&self, pr_branch: &str, base_branch: &str) -> Result<String> {
-        self.edited_prs
-            .borrow_mut()
-            .push((pr_branch.to_string(), base_branch.to_string()));
-        Ok(format!("https://github.com/test/repo/pull/123"))
-    }
-
-    async fn pr_diff(&self, pr_branch: &str) -> Result<String> {
-        self.pr_diffs
-            .borrow()
-            .get(pr_branch)
-            .cloned()
-            .ok_or_else(|| anyhow!("PR diff not found for branch: {}", pr_branch))
-    }
-
-    async fn delete_branch(&self, _branch: &str) -> Result<()> {
-        // Mock implementation - does nothing
         Ok(())
     }
 }
