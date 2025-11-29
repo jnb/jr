@@ -6,8 +6,6 @@ use std::collections::HashMap;
 
 use anyhow::Context;
 use anyhow::Result;
-use clap::Parser;
-use clap::Subcommand;
 use colored::Colorize;
 use futures::future::join_all;
 use git::GitOps;
@@ -19,45 +17,6 @@ pub const GLOBAL_BRANCH_PREFIX: &str = "jnb/";
 
 /// Number of characters from the change ID to use in branch names
 const CHANGE_ID_LENGTH: usize = 8;
-
-#[derive(Parser)]
-#[command(name = "jr")]
-#[command(about = "Jujutsu Review: Manage Git branches and GitHub PRs in a stacked workflow", long_about = None)]
-pub struct Cli {
-    #[command(subcommand)]
-    pub command: Option<Commands>,
-}
-
-#[derive(Subcommand)]
-pub enum Commands {
-    /// Create a new PR (uses jj commit message)
-    Create {
-        /// Revision to use (defaults to @)
-        #[arg(short, long, default_value = "@")]
-        revision: String,
-    },
-    /// Update an existing PR with local changes
-    Update {
-        /// Revision to use (defaults to @)
-        #[arg(short, long, default_value = "@")]
-        revision: String,
-        /// Commit message describing the changes
-        #[arg(short, long)]
-        message: String,
-    },
-    /// Restack an existing PR on updated parent (only works if no local changes)
-    Restack {
-        /// Revision to use (defaults to @)
-        #[arg(short, long, default_value = "@")]
-        revision: String,
-    },
-    /// Show status of stacked PRs
-    Status,
-}
-
-// =============================================================================
-// App structure with dependency injection
-// =============================================================================
 
 pub struct App<J: JujutsuOps, G: GitOps, H: GithubOps> {
     pub jj: J,
@@ -1265,9 +1224,7 @@ mod tests {
         let app = App::new(mock_jj, mock_git, mock_gh);
 
         let mut stdout = Vec::new();
-        let result = app
-            .cmd_update("@", "Update commit C", &mut stdout)
-            .await;
+        let result = app.cmd_update("@", "Update commit C", &mut stdout).await;
         assert!(result.is_err());
         let error_msg = result.unwrap_err().to_string();
         assert!(error_msg.contains("parent PR"));
