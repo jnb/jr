@@ -409,8 +409,8 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
             }
 
             // Also collect parent branches
-            if let Ok(parent_change_ids) = self.jj.get_parent_change_ids(change_id) {
-                for parent_change_id in parent_change_ids {
+            if let Ok(commit) = self.jj.get_commit(change_id) {
+                for parent_change_id in commit.parent_change_ids {
                     let short_parent_id =
                         &parent_change_id[..CHANGE_ID_LENGTH.min(parent_change_id.len())];
                     let parent_branch = format!("{}{}", GLOBAL_BRANCH_PREFIX, short_parent_id);
@@ -512,8 +512,9 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         all_branches: &[String],
         pr_diffs: &HashMap<String, String>,
     ) -> Result<bool> {
-        // Get parent change IDs from jujutsu
-        let parent_change_ids = self.jj.get_parent_change_ids(revision)?;
+        // Get parent change IDs from commit
+        let commit = self.jj.get_commit(revision)?;
+        let parent_change_ids = commit.parent_change_ids;
 
         // For each parent, check if it has a PR and if it's outdated
         for parent_change_id in parent_change_ids {
@@ -662,8 +663,9 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
 
     /// Find the previous PR branch in the stack based on parent change IDs from jujutsu
     fn find_previous_branch(&self, revision: &str, all_branches: &[String]) -> Result<String> {
-        // Get parent change IDs from jujutsu
-        let parent_change_ids = self.jj.get_parent_change_ids(revision)?;
+        // Get parent change IDs from commit
+        let commit = self.jj.get_commit(revision)?;
+        let parent_change_ids = commit.parent_change_ids;
 
         // For each parent, check if a PR branch exists
         for parent_change_id in parent_change_ids {

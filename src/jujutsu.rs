@@ -12,9 +12,6 @@ pub trait JujutsuOps {
     /// Get complete commit information for a revision
     fn get_commit(&self, revision: &str) -> Result<Commit>;
 
-    /// Get the parent change IDs for a revision
-    fn get_parent_change_ids(&self, revision: &str) -> Result<Vec<String>>;
-
     /// Get the head commits of the current stack (descendants of @ that aren't ancestors of trunk)
     /// Returns (change_id, commit_id) tuples for each head
     fn get_stack_heads(&self) -> Result<Vec<(String, String)>>;
@@ -29,6 +26,7 @@ pub struct Commit {
     pub change_id: String,
     pub commit_id: String,
     pub message: CommitMessage,
+    pub parent_change_ids: Vec<String>,
 }
 
 /// Represents a commit message with title and body
@@ -57,7 +55,7 @@ pub struct RealJujutsu;
 
 impl JujutsuOps for RealJujutsu {
     fn get_commit(&self, revision: &str) -> Result<Commit> {
-        // Get commit_id, change_id, and description in a single jj command
+        // Get commit_id, change_id, description, and parent change IDs in a single jj command
         let output = Command::new("jj")
             .args([
                 "log",
@@ -65,7 +63,7 @@ impl JujutsuOps for RealJujutsu {
                 revision,
                 "--no-graph",
                 "-T",
-                r#"commit_id ++ "|" ++ change_id ++ "|" ++ description"#,
+                r#"commit_id ++ "|" ++ change_id ++ "|" ++ description ++ "|" ++ parents.map(|p| p.change_id()).join(",")"#,
             ])
             .output()
             .context("Failed to execute jj command")?;
@@ -78,11 +76,11 @@ impl JujutsuOps for RealJujutsu {
         }
 
         let output_str = String::from_utf8(output.stdout)?.trim().to_string();
-        let parts: Vec<&str> = output_str.splitn(3, '|').collect();
+        let parts: Vec<&str> = output_str.splitn(4, '|').collect();
 
-        if parts.len() != 3 {
+        if parts.len() != 4 {
             return Err(anyhow!(
-                "Unexpected jj output format: expected 3 parts, got {}",
+                "Unexpected jj output format: expected 4 parts, got {}",
                 parts.len()
             ));
         }
@@ -90,6 +88,14 @@ impl JujutsuOps for RealJujutsu {
         let commit_id = parts[0].to_string();
         let change_id = parts[1].to_string();
         let description = parts[2].to_string();
+        let parent_ids_str = parts[3];
+
+        // Parse parent change IDs (comma-separated, may be empty)
+        let parent_change_ids: Vec<String> = if parent_ids_str.is_empty() {
+            vec![]
+        } else {
+            parent_ids_str.split(',').map(|s| s.to_string()).collect()
+        };
 
         // Parse commit message into title and body
         let lines: Vec<&str> = description.lines().collect();
@@ -119,30 +125,8 @@ impl JujutsuOps for RealJujutsu {
             change_id,
             commit_id,
             message: CommitMessage { title, body },
+            parent_change_ids,
         })
-    }
-
-    fn get_parent_change_ids(&self, revision: &str) -> Result<Vec<String>> {
-        let parent_revset = format!("parents({})", revision);
-        let output = Command::new("jj")
-            .args(["log", "-r", &parent_revset, "--no-graph", "-T", "change_id"])
-            .output()
-            .context("Failed to execute jj command")?;
-
-        if !output.status.success() {
-            return Err(anyhow!(
-                "jj command failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            ));
-        }
-
-        let parent_ids: Vec<String> = String::from_utf8(output.stdout)?
-            .lines()
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect();
-
-        Ok(parent_ids)
     }
 
     fn get_stack_heads(&self) -> Result<Vec<(String, String)>> {
@@ -249,6 +233,13 @@ impl JujutsuOps for MockJujutsu {
             self.commit_id.clone()
         };
 
+        // Get parent change IDs from map or default
+        let parent_change_ids = if let Some(parents) = self.change_to_parents.get(revision) {
+            parents.clone()
+        } else {
+            self.parent_change_ids.clone()
+        };
+
         // Parse commit message into title and body
         let lines: Vec<&str> = self.commit_message.lines().collect();
         let title = if lines.is_empty() {
@@ -277,16 +268,8 @@ impl JujutsuOps for MockJujutsu {
             change_id: self.change_id.clone(),
             commit_id,
             message: CommitMessage { title, body },
+            parent_change_ids,
         })
-    }
-
-    fn get_parent_change_ids(&self, revision: &str) -> Result<Vec<String>> {
-        // First try to find in the map by change_id
-        if let Some(parents) = self.change_to_parents.get(revision) {
-            return Ok(parents.clone());
-        }
-        // Fall back to default
-        Ok(self.parent_change_ids.clone())
     }
 
     fn get_stack_heads(&self) -> Result<Vec<(String, String)>> {
