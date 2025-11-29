@@ -175,12 +175,17 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
                 "Tree unchanged and base hasn't moved, reusing old PR tip commit"
             )?;
             old_pr_tip.clone()
-        } else {
+        } else if base_has_changed {
             // Create merge commit with old PR tip and base as parents
             let commit =
                 self.git
                     .commit_tree_merge(&tree, &[&old_pr_tip, &base_tip], &commit_message)?;
             writeln!(stdout, "Created new merge commit: {}", commit)?;
+            commit
+        } else {
+            // Tree changed but base hasn't - create regular commit with single parent
+            let commit = self.git.commit_tree(&tree, &old_pr_tip, &commit_message)?;
+            writeln!(stdout, "Created new commit: {}", commit)?;
             commit
         };
 

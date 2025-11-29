@@ -237,17 +237,17 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
         out
     ));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
-        Change ID: [CHGID]
-        Commit ID: [OBJID]
-        PR branch: [BRANCH]
-        Base branch: master
-        Tree: [OBJID]
-        PR branch [BRANCH] exists
-        Created new merge commit: [OBJID]
-        Updated PR branch [BRANCH]
-        Pushed PR branch [BRANCH]
-        Updated PR for [BRANCH] with base master
-        PR URL: https://github.com/[USER]/[REPO]/[PRID]
+    Change ID: [CHGID]
+    Commit ID: [OBJID]
+    PR branch: [BRANCH]
+    Base branch: master
+    Tree: [OBJID]
+    PR branch [BRANCH] exists
+    Created new commit: [OBJID]
+    Updated PR branch [BRANCH]
+    Pushed PR branch [BRANCH]
+    Updated PR for [BRANCH] with base master
+    PR URL: https://github.com/[USER]/[REPO]/[PRID]
     ");
 
     let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
