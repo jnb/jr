@@ -46,18 +46,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         writeln!(stdout, "Change ID: {}", commit.change_id)?;
         writeln!(stdout, "Commit ID: {}", commit.commit_id)?;
 
-        // Validate that this commit is not an ancestor of main
-        // (i.e., check if main is a descendant of this commit, which means this commit is already merged)
-        let main_commit = self
-            .git
-            .get_branch("master")
-            .or_else(|_| self.git.get_branch("main"))?;
-        if self.git.is_ancestor(&commit.commit_id, &main_commit)? {
-            return Err(anyhow::anyhow!(
-                "Cannot create PR: commit {} is an ancestor of main branch. This commit is already merged.",
-                commit.commit_id
-            ));
-        }
+        self.validate_not_merged_to_main(&commit)?;
 
         // PR branch names: current and base
         let short_change_id = &commit.change_id[..CHANGE_ID_LENGTH.min(commit.change_id.len())];
@@ -97,7 +86,9 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
             .context(format!("Base branch {} does not exist", base_branch))?;
 
         // Create new commit with jj commit message
-        let new_commit = self.git.commit_tree(&tree, &parent, &commit.full_message())?;
+        let new_commit = self
+            .git
+            .commit_tree(&tree, &parent, &commit.full_message())?;
         writeln!(stdout, "Created new commit: {}", new_commit)?;
 
         // Update PR branch to point to new commit
@@ -135,21 +126,8 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         writeln!(stdout, "Change ID: {}", commit.change_id)?;
         writeln!(stdout, "Commit ID: {}", commit.commit_id)?;
 
-        // Check that all parent PRs in the stack are up to date
+        self.validate_not_merged_to_main(&commit)?;
         self.check_parent_prs_up_to_date(revision).await?;
-
-        // Validate that this commit is not an ancestor of main
-        // (i.e., check if main is a descendant of this commit, which means this commit is already merged)
-        let main_commit = self
-            .git
-            .get_branch("master")
-            .or_else(|_| self.git.get_branch("main"))?;
-        if self.git.is_ancestor(&commit.commit_id, &main_commit)? {
-            return Err(anyhow::anyhow!(
-                "Cannot update PR: commit {} is an ancestor of main branch. This commit is already merged.",
-                commit.commit_id
-            ));
-        }
 
         // PR branch names: current and base
         let short_change_id = &commit.change_id[..CHANGE_ID_LENGTH.min(commit.change_id.len())];
@@ -252,20 +230,8 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         writeln!(stdout, "Change ID: {}", commit.change_id)?;
         writeln!(stdout, "Commit ID: {}", commit.commit_id)?;
 
-        // Check that all parent PRs in the stack are up to date
+        self.validate_not_merged_to_main(&commit)?;
         self.check_parent_prs_up_to_date(revision).await?;
-
-        // Validate that this commit is not an ancestor of main
-        let main_commit = self
-            .git
-            .get_branch("master")
-            .or_else(|_| self.git.get_branch("main"))?;
-        if self.git.is_ancestor(&commit.commit_id, &main_commit)? {
-            return Err(anyhow::anyhow!(
-                "Cannot restack PR: commit {} is an ancestor of main branch. This commit is already merged.",
-                commit.commit_id
-            ));
-        }
 
         // PR branch names: current and base
         let short_change_id = &commit.change_id[..CHANGE_ID_LENGTH.min(commit.change_id.len())];
@@ -382,7 +348,10 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         // Collect all changes to process
         let changes: Vec<(String, String)> = if heads.is_empty() {
             // Current commit is on trunk or no stack exists
-            vec![(current_commit.change_id.clone(), current_commit.commit_id.clone())]
+            vec![(
+                current_commit.change_id.clone(),
+                current_commit.commit_id.clone(),
+            )]
         } else if heads.len() == 1 {
             // Single head - show from head back to trunk
             let (_head_change_id, head_commit_id) = &heads[0];
@@ -661,6 +630,20 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         Ok(())
     }
 
+    /// Validate that a commit is not already merged to trunk
+    fn validate_not_merged_to_main(&self, commit: &jujutsu::Commit) -> Result<()> {
+        let trunk_commit = self.jj.get_trunk_commit_id()?;
+
+        if self.jj.is_ancestor(&commit.commit_id, &trunk_commit)? {
+            return Err(anyhow::anyhow!(
+                "Cannot create PR: commit {} is an ancestor of trunk. This commit is already merged.",
+                commit.commit_id
+            ));
+        }
+
+        Ok(())
+    }
+
     /// Find the previous PR branch in the stack based on parent change IDs from jujutsu
     fn find_previous_branch(&self, revision: &str, all_branches: &[String]) -> Result<String> {
         // Get parent change IDs from commit
@@ -775,6 +758,8 @@ mod tests {
             stack_changes: vec![],
             change_to_commit: std::collections::HashMap::new(),
             change_to_parents: std::collections::HashMap::new(),
+            trunk_commit_id: "trunk123".to_string(),
+            ancestors: std::collections::HashMap::new(),
         };
         let mock_git = MockGit::new().with_branch("master".to_string(), "base_commit".to_string());
         let mock_gh = MockGithub::new(GLOBAL_BRANCH_PREFIX.to_string());
@@ -809,6 +794,8 @@ mod tests {
             stack_changes: vec![],
             change_to_commit: std::collections::HashMap::new(),
             change_to_parents: std::collections::HashMap::new(),
+            trunk_commit_id: "trunk123".to_string(),
+            ancestors: std::collections::HashMap::new(),
         };
         let mock_git = MockGit::new()
             .with_branch("master".to_string(), "main_commit".to_string())
@@ -841,6 +828,8 @@ mod tests {
             stack_changes: vec![],
             change_to_commit: std::collections::HashMap::new(),
             change_to_parents: std::collections::HashMap::new(),
+            trunk_commit_id: "trunk123".to_string(),
+            ancestors: std::collections::HashMap::new(),
         };
         let mock_git = MockGit::new();
         let mock_gh = MockGithub::new(GLOBAL_BRANCH_PREFIX.to_string())
@@ -865,6 +854,8 @@ mod tests {
             stack_changes: vec![],
             change_to_commit: std::collections::HashMap::new(),
             change_to_parents: std::collections::HashMap::new(),
+            trunk_commit_id: "trunk123".to_string(),
+            ancestors: std::collections::HashMap::new(),
         };
         let mock_git = MockGit::new();
         let mock_gh = MockGithub::new(GLOBAL_BRANCH_PREFIX.to_string())
@@ -889,6 +880,8 @@ mod tests {
             stack_changes: vec![],
             change_to_commit: std::collections::HashMap::new(),
             change_to_parents: std::collections::HashMap::new(),
+            trunk_commit_id: "trunk123".to_string(),
+            ancestors: std::collections::HashMap::new(),
         };
         let mock_git = MockGit::new()
             .with_branch("jnb/abc12345".to_string(), "remote_commit".to_string())
@@ -925,6 +918,8 @@ mod tests {
             stack_changes: vec![],
             change_to_commit: std::collections::HashMap::new(),
             change_to_parents: std::collections::HashMap::new(),
+            trunk_commit_id: "trunk123".to_string(),
+            ancestors: std::collections::HashMap::new(),
         };
         let mock_git = MockGit::new()
             .with_branch("jnb/abc12345".to_string(), "remote_commit".to_string())
@@ -959,6 +954,8 @@ mod tests {
             stack_changes: vec![],
             change_to_commit: std::collections::HashMap::new(),
             change_to_parents: std::collections::HashMap::new(),
+            trunk_commit_id: "trunk123".to_string(),
+            ancestors: std::collections::HashMap::new(),
         };
         let mock_git = MockGit::new();
         let mock_gh = MockGithub::new(GLOBAL_BRANCH_PREFIX.to_string())
@@ -983,6 +980,8 @@ mod tests {
             stack_changes: vec![],
             change_to_commit: std::collections::HashMap::new(),
             change_to_parents: std::collections::HashMap::new(),
+            trunk_commit_id: "trunk123".to_string(),
+            ancestors: std::collections::HashMap::new(),
         };
         let mock_git = MockGit::new()
             .with_branch("jnb/abc12345".to_string(), "remote_commit".to_string())
@@ -1001,6 +1000,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_cmd_create_rejects_ancestor_of_main() {
+        let mut ancestors = std::collections::HashMap::new();
+        ancestors.insert("trunk123".to_string(), vec!["old_commit".to_string()]);
+
         let mock_jj = MockJujutsu {
             change_id: "abc12345".to_string(),
             commit_id: "old_commit".to_string(),
@@ -1010,10 +1012,10 @@ mod tests {
             stack_changes: vec![],
             change_to_commit: std::collections::HashMap::new(),
             change_to_parents: std::collections::HashMap::new(),
+            trunk_commit_id: "trunk123".to_string(),
+            ancestors,
         };
-        let mock_git = MockGit::new()
-            .with_branch("master".to_string(), "main_commit".to_string())
-            .with_ancestor("old_commit".to_string(), "main_commit".to_string());
+        let mock_git = MockGit::new().with_branch("master".to_string(), "main_commit".to_string());
         let mock_gh = MockGithub::new(GLOBAL_BRANCH_PREFIX.to_string());
 
         let app = App::new(mock_jj, mock_git, mock_gh);
@@ -1024,7 +1026,7 @@ mod tests {
         assert!(result
             .unwrap_err()
             .to_string()
-            .contains("ancestor of main branch"));
+            .contains("ancestor of trunk"));
     }
 
     #[tokio::test]
@@ -1038,6 +1040,8 @@ mod tests {
             stack_changes: vec![],
             change_to_commit: std::collections::HashMap::new(),
             change_to_parents: std::collections::HashMap::new(),
+            trunk_commit_id: "trunk123".to_string(),
+            ancestors: std::collections::HashMap::new(),
         };
         let mock_git = MockGit::new().with_branch("master".to_string(), "main_commit".to_string());
         // Don't add new_commit as an ancestor of main_commit
@@ -1061,6 +1065,8 @@ mod tests {
             stack_changes: vec![],
             change_to_commit: std::collections::HashMap::new(),
             change_to_parents: std::collections::HashMap::new(),
+            trunk_commit_id: "trunk123".to_string(),
+            ancestors: std::collections::HashMap::new(),
         };
         let mock_git = MockGit::new()
             .with_branch("master".to_string(), "main_commit".to_string())
@@ -1089,6 +1095,8 @@ mod tests {
             stack_changes: vec![],
             change_to_commit: std::collections::HashMap::new(),
             change_to_parents: std::collections::HashMap::new(),
+            trunk_commit_id: "trunk123".to_string(),
+            ancestors: std::collections::HashMap::new(),
         };
         let mock_git = MockGit::new()
             .with_branch("master".to_string(), "main_commit".to_string())
@@ -1116,6 +1124,8 @@ mod tests {
             stack_changes: vec![],
             change_to_commit: std::collections::HashMap::new(),
             change_to_parents: std::collections::HashMap::new(),
+            trunk_commit_id: "trunk123".to_string(),
+            ancestors: std::collections::HashMap::new(),
         };
         let mock_git = MockGit::new()
             .with_branch("master".to_string(), "main_commit".to_string())
@@ -1146,6 +1156,8 @@ mod tests {
             stack_changes: vec![],
             change_to_commit: std::collections::HashMap::new(),
             change_to_parents: std::collections::HashMap::new(),
+            trunk_commit_id: "trunk123".to_string(),
+            ancestors: std::collections::HashMap::new(),
         };
         let mock_git = MockGit::new().with_branch("master".to_string(), "main_commit".to_string());
         let mock_gh = MockGithub::new(GLOBAL_BRANCH_PREFIX.to_string());
@@ -1188,6 +1200,8 @@ mod tests {
             ],
             change_to_commit,
             change_to_parents,
+            trunk_commit_id: "trunk123".to_string(),
+            ancestors: std::collections::HashMap::new(),
         };
         let mock_git = MockGit::new()
             .with_branch("master".to_string(), "main_commit".to_string())
@@ -1234,6 +1248,8 @@ mod tests {
             stack_changes: vec![("abc12345".to_string(), "local_commit".to_string())],
             change_to_commit: std::collections::HashMap::new(),
             change_to_parents: std::collections::HashMap::new(),
+            trunk_commit_id: "trunk123".to_string(),
+            ancestors: std::collections::HashMap::new(),
         };
         let mock_git = MockGit::new()
             .with_branch("master".to_string(), "main_commit".to_string())
@@ -1273,6 +1289,8 @@ mod tests {
             stack_changes: vec![("abc12345".to_string(), "local_commit".to_string())],
             change_to_commit: std::collections::HashMap::new(),
             change_to_parents: std::collections::HashMap::new(),
+            trunk_commit_id: "trunk123".to_string(),
+            ancestors: std::collections::HashMap::new(),
         };
         let mock_git = MockGit::new()
             .with_branch("master".to_string(), "main_commit".to_string())

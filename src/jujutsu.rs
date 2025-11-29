@@ -19,6 +19,12 @@ pub trait JujutsuOps {
     /// Get all changes from revision back to (but not including) the main branch
     /// Returns them in order from tip to base as (change_id, commit_id) tuples
     fn get_stack_changes(&self, revision: &str) -> Result<Vec<(String, String)>>;
+
+    /// Get the commit ID of the trunk branch (main/master)
+    fn get_trunk_commit_id(&self) -> Result<String>;
+
+    /// Check if `commit` is an ancestor of `descendant` using Jujutsu revsets
+    fn is_ancestor(&self, commit: &str, descendant: &str) -> Result<bool>;
 }
 
 /// Represents a commit with its IDs and message
@@ -208,6 +214,41 @@ impl JujutsuOps for RealJujutsu {
         // Reverse to get tip-to-base order (from most recent to oldest)
         Ok(changes.into_iter().rev().collect())
     }
+
+    fn get_trunk_commit_id(&self) -> Result<String> {
+        let output = Command::new("jj")
+            .args(["log", "-r", "trunk()", "--no-graph", "-T", "commit_id"])
+            .output()
+            .context("Failed to execute jj command")?;
+
+        if !output.status.success() {
+            return Err(anyhow!(
+                "jj command failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+
+        Ok(String::from_utf8(output.stdout)?.trim().to_string())
+    }
+
+    fn is_ancestor(&self, commit: &str, descendant: &str) -> Result<bool> {
+        // Check if commit is in ancestors(descendant) using Jujutsu revsets
+        let revset = format!("ancestors({}) & {}", descendant, commit);
+        let output = Command::new("jj")
+            .args(["log", "-r", &revset, "--no-graph", "-T", "commit_id"])
+            .output()
+            .context("Failed to execute jj command")?;
+
+        if !output.status.success() {
+            return Err(anyhow!(
+                "jj command failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+
+        // If output is non-empty, commit is an ancestor of descendant
+        Ok(!String::from_utf8(output.stdout)?.trim().is_empty())
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -222,6 +263,8 @@ pub struct MockJujutsu {
     pub stack_changes: Vec<(String, String)>,
     pub change_to_commit: std::collections::HashMap<String, String>,
     pub change_to_parents: std::collections::HashMap<String, Vec<String>>,
+    pub trunk_commit_id: String,
+    pub ancestors: std::collections::HashMap<String, Vec<String>>,
 }
 
 impl JujutsuOps for MockJujutsu {
@@ -278,5 +321,17 @@ impl JujutsuOps for MockJujutsu {
 
     fn get_stack_changes(&self, _revision: &str) -> Result<Vec<(String, String)>> {
         Ok(self.stack_changes.clone())
+    }
+
+    fn get_trunk_commit_id(&self) -> Result<String> {
+        Ok(self.trunk_commit_id.clone())
+    }
+
+    fn is_ancestor(&self, commit: &str, descendant: &str) -> Result<bool> {
+        Ok(self
+            .ancestors
+            .get(descendant)
+            .map(|ancestors| ancestors.contains(&commit.to_string()))
+            .unwrap_or(false))
     }
 }
