@@ -36,14 +36,20 @@ pub enum Commands {
         #[arg(short, long, default_value = "@")]
         revision: String,
     },
-    /// Update an existing PR
+    /// Update an existing PR with local changes
     Update {
         /// Revision to use (defaults to @)
         #[arg(short, long, default_value = "@")]
         revision: String,
-        /// Commit message describing the update (optional; auto-generates "Restack" if this is a pure restack)
+        /// Commit message describing the changes
         #[arg(short, long)]
-        message: Option<String>,
+        message: String,
+    },
+    /// Restack an existing PR on updated parent (only works if no local changes)
+    Restack {
+        /// Revision to use (defaults to @)
+        #[arg(short, long, default_value = "@")]
+        revision: String,
     },
     /// Show status of stacked PRs
     Status,
@@ -169,7 +175,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
     pub async fn cmd_update(
         &self,
         revision: &str,
-        message: Option<&str>,
+        message: &str,
         stdout: &mut impl std::io::Write,
     ) -> Result<()> {
         // Get change ID from jj
@@ -228,25 +234,8 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
             .get_branch(&base_branch)
             .context(format!("Base branch {} does not exist", base_branch))?;
 
-        // Determine the commit message to use
-        let commit_message = if let Some(msg) = message {
-            msg.to_string()
-        } else {
-            // No message provided - check if this is a pure restack
-            // Compare local single commit diff vs cumulative PR diff from GitHub
-            let local_change_diff = self.git.get_commit_diff(&commit_id)?;
-            let pr_cumulative_diff = self.gh.pr_diff(&pr_branch).await?;
-
-            if local_change_diff == pr_cumulative_diff {
-                // Pure restack - the change content is the same
-                writeln!(stdout, "Detected pure restack (no changes to this commit)")?;
-                "Restack".to_string()
-            } else {
-                return Err(anyhow::anyhow!(
-                    "Cannot update PR: commit has changes but no message provided. Use -m to specify a commit message."
-                ));
-            }
-        };
+        // Use the provided commit message
+        let commit_message = message;
 
         // Check if we need to create a new commit
         let old_pr_tree = self.git.get_tree(&old_pr_tip)?;
@@ -263,6 +252,134 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
             let commit =
                 self.git
                     .commit_tree_merge(&tree, &[&old_pr_tip, &base_tip], &commit_message)?;
+            writeln!(stdout, "Created new merge commit: {}", commit)?;
+            commit
+        };
+
+        // Only update if there are actual changes
+        if new_commit == old_pr_tip {
+            writeln!(stdout, "No changes to push - PR is already up to date")?;
+            return Ok(());
+        }
+
+        // Update PR branch to point to new commit
+        self.git.update_branch(&pr_branch, &new_commit)?;
+        writeln!(stdout, "Updated PR branch {}", pr_branch)?;
+
+        // Push PR branch
+        self.git.push_branch(&pr_branch)?;
+        writeln!(stdout, "Pushed PR branch {}", pr_branch)?;
+
+        // Update PR base if needed
+        let pr_url = if self.gh.pr_is_open(&pr_branch).await? {
+            let url = self.gh.pr_edit(&pr_branch, &base_branch).await?;
+            writeln!(
+                stdout,
+                "Updated PR for {} with base {}",
+                pr_branch, base_branch
+            )?;
+            url
+        } else {
+            return Err(anyhow::anyhow!(
+                "No open PR found for PR branch {}. The PR may have been closed or merged.",
+                pr_branch
+            ));
+        };
+
+        writeln!(stdout, "PR URL: {}", pr_url)?;
+
+        Ok(())
+    }
+
+    pub async fn cmd_restack(
+        &self,
+        revision: &str,
+        stdout: &mut impl std::io::Write,
+    ) -> Result<()> {
+        // Get change ID from jj
+        let change_id = self.jj.get_change_id(revision)?;
+        let commit_id = self.jj.get_commit_id(revision)?;
+
+        writeln!(stdout, "Change ID: {}", change_id)?;
+        writeln!(stdout, "Commit ID: {}", commit_id)?;
+
+        // Check that all parent PRs in the stack are up to date
+        self.check_parent_prs_up_to_date(revision).await?;
+
+        // Validate that this commit is not an ancestor of main
+        let main_commit = self
+            .git
+            .get_branch("master")
+            .or_else(|_| self.git.get_branch("main"))?;
+        if self.git.is_ancestor(&commit_id, &main_commit)? {
+            return Err(anyhow::anyhow!(
+                "Cannot restack PR: commit {} is an ancestor of main branch. This commit is already merged.",
+                commit_id
+            ));
+        }
+
+        // PR branch names: current and base
+        let short_change_id = &change_id[..CHANGE_ID_LENGTH.min(change_id.len())];
+        let pr_branch = format!("{}{}", GLOBAL_BRANCH_PREFIX, short_change_id);
+
+        // Fetch all branches once
+        let all_branches = self.gh.find_branches_with_prefix("").await?;
+        let base_branch = self.find_previous_branch(revision, &all_branches)?;
+
+        writeln!(stdout, "PR branch: {}", pr_branch)?;
+        writeln!(stdout, "Base branch: {}", base_branch)?;
+
+        // Get the tree from the current Jujutsu commit (represents current state)
+        let tree = self.git.get_tree(&commit_id)?;
+        writeln!(stdout, "Tree: {}", tree)?;
+
+        // PR branch must exist for restack
+        let _existing_pr_branch = self.git.get_branch(&pr_branch).context(format!(
+            "PR branch {} does not exist. Use 'jr create' to create a new PR.",
+            pr_branch
+        ))?;
+
+        writeln!(stdout, "PR branch {} exists", pr_branch)?;
+
+        // Check if this is a pure restack (no local changes)
+        let local_change_diff = self.git.get_commit_diff(&commit_id)?;
+        let pr_cumulative_diff = self.gh.pr_diff(&pr_branch).await?;
+
+        if local_change_diff != pr_cumulative_diff {
+            return Err(anyhow::anyhow!(
+                "Cannot restack: commit has local changes. Use 'jr update -m \"<message>\"' to update with your changes."
+            ));
+        }
+
+        writeln!(stdout, "Detected pure restack (no changes to this commit)")?;
+
+        // Get both parents for merge commit
+        let old_pr_tip = self
+            .git
+            .get_branch(&pr_branch)
+            .context(format!("PR branch {} does not exist", pr_branch))?;
+        let base_tip = self
+            .git
+            .get_branch(&base_branch)
+            .context(format!("Base branch {} does not exist", base_branch))?;
+
+        let commit_message = "Restack";
+
+        // Check if we need to create a new commit
+        let old_pr_tree = self.git.get_tree(&old_pr_tip)?;
+        let base_has_changed = !self.git.is_ancestor(&base_tip, &old_pr_tip)?;
+
+        let new_commit = if tree == old_pr_tree && !base_has_changed {
+            writeln!(
+                stdout,
+                "Tree unchanged and base hasn't moved, reusing old PR tip commit"
+            )?;
+            old_pr_tip.clone()
+        } else {
+            // Create merge commit with old PR tip and base as parents
+            let commit =
+                self.git
+                    .commit_tree_merge(&tree, &[&old_pr_tip, &base_tip], commit_message)?;
             writeln!(stdout, "Created new merge commit: {}", commit)?;
             commit
         };
@@ -753,9 +870,7 @@ mod tests {
         let app = App::new(mock_jj, mock_git, mock_gh);
 
         let mut stdout = Vec::new();
-        let result = app
-            .cmd_update("@", Some("Update from review"), &mut stdout)
-            .await;
+        let result = app.cmd_update("@", "Update from review", &mut stdout).await;
         assert!(result.is_ok());
 
         // Verify PR was edited, not created
@@ -1008,7 +1123,7 @@ mod tests {
 
         let mut stdout = Vec::new();
         let result = app
-            .cmd_update("@", Some("Update after review"), &mut stdout)
+            .cmd_update("@", "Update after review", &mut stdout)
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("No open PR found"));
@@ -1151,7 +1266,7 @@ mod tests {
 
         let mut stdout = Vec::new();
         let result = app
-            .cmd_update("@", Some("Update commit C"), &mut stdout)
+            .cmd_update("@", "Update commit C", &mut stdout)
             .await;
         assert!(result.is_err());
         let error_msg = result.unwrap_err().to_string();
@@ -1161,7 +1276,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_cmd_update_auto_restack_when_diffs_match() {
+    async fn test_cmd_restack_works_when_diffs_match() {
         // Set up a commit where the diff introduced by each commit matches (pure restack)
         let mock_jj = MockJujutsu {
             change_id: "abc12345".to_string(),
@@ -1190,9 +1305,9 @@ mod tests {
 
         let app = App::new(mock_jj, mock_git, mock_gh);
 
-        // Update without message - should auto-detect restack
+        // Restack should succeed when diffs match
         let mut stdout = Vec::new();
-        let result = app.cmd_update("@", None, &mut stdout).await;
+        let result = app.cmd_restack("@", &mut stdout).await;
         if let Err(e) = &result {
             eprintln!("Error: {}", e);
         }
@@ -1200,8 +1315,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_cmd_update_errors_when_no_message_and_diffs_differ() {
-        // Set up a commit where the diff introduced differs (not a pure restack)
+    async fn test_cmd_restack_errors_when_diffs_differ() {
+        // Set up a commit where the diff introduced differs (has local changes)
         let mock_jj = MockJujutsu {
             change_id: "abc12345".to_string(),
             commit_id: "local_commit".to_string(),
@@ -1229,11 +1344,11 @@ mod tests {
 
         let app = App::new(mock_jj, mock_git, mock_gh);
 
-        // Update without message - should error since diffs differ
+        // Restack should error when commit has local changes
         let mut stdout = Vec::new();
-        let result = app.cmd_update("@", None, &mut stdout).await;
+        let result = app.cmd_restack("@", &mut stdout).await;
         assert!(result.is_err());
         let error_msg = result.unwrap_err().to_string();
-        assert!(error_msg.contains("no message provided"));
+        assert!(error_msg.contains("local changes"));
     }
 }

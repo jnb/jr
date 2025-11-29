@@ -104,7 +104,7 @@ async fn setup(temp_path: &std::path::Path) -> anyhow::Result<()> {
 /// - Create PRs for Alpha, Beta, and Gamma (all show ✓)
 /// - Edit Alpha (Alpha shows ✗, Beta and Gamma show ↻)
 /// - Update Alpha's PR (Alpha shows ✓, Beta and Gamma still show ↻)
-/// - Restack Beta without a message (auto-detects pure restack, Beta shows ✓, Gamma still shows ↻)
+/// - Restack Beta without a message (Beta shows ✓, Gamma still shows ↻)
 /// - Restack Gamma without a message (all show ✓)
 ///
 /// This validates that status symbols correctly propagate through the stack and
@@ -233,7 +233,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
 
     let (out, _) = run_and_capture!(|out, _| app.cmd_update(
         "description(Alpha) & mine()",
-        Some("Update alpha"),
+        "Update alpha",
         out
     ));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
@@ -261,10 +261,9 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     ");
 
     // -------------------------------------------------------------------------
-    // Update Beta
+    // Restack Beta
 
-    let (out, _) =
-        run_and_capture!(|out, _| app.cmd_update("description(Beta) & mine()", None, out));
+    let (out, _) = run_and_capture!(|out, _| app.cmd_restack("description(Beta) & mine()", out));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
         Change ID: [CHGID]
         Commit ID: [OBJID]
@@ -291,10 +290,9 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     ");
 
     // -------------------------------------------------------------------------
-    // Update Gamma
+    // Restack Gamma
 
-    let (out, _) =
-        run_and_capture!(|out, _| app.cmd_update("description(Gamma) & mine()", None, out));
+    let (out, _) = run_and_capture!(|out, _| app.cmd_restack("description(Gamma) & mine()", out));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
         Change ID: [CHGID]
         Commit ID: [OBJID]

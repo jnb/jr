@@ -8,10 +8,6 @@ use jr::Cli;
 use jr::Commands;
 use jr::GLOBAL_BRANCH_PREFIX;
 
-// TODO
-// jr create       # Create new PR
-// jr push -m      # Update existing PR
-// jr restack      # Restack on parent
 #[tokio::main]
 async fn main() -> Result<()> {
     let app = App::new(
@@ -27,8 +23,11 @@ async fn main() -> Result<()> {
             app.cmd_create(&revision, &mut std::io::stdout()).await?
         }
         Some(Commands::Update { revision, message }) => {
-            app.cmd_update(&revision, message.as_deref(), &mut std::io::stdout())
+            app.cmd_update(&revision, &message, &mut std::io::stdout())
                 .await?
+        }
+        Some(Commands::Restack { revision }) => {
+            app.cmd_restack(&revision, &mut std::io::stdout()).await?
         }
         Some(Commands::Status) | None => {
             app.cmd_status(&mut std::io::stdout(), &mut std::io::stderr())
