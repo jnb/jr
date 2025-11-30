@@ -1,8 +1,8 @@
-use std::process::Command;
-
 use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result;
+use async_trait::async_trait;
+use tokio::process::Command;
 #[cfg(test)]
 use mockall::automock;
 
@@ -11,23 +11,24 @@ use mockall::automock;
 
 /// Operations for interacting with Jujutsu version control
 #[cfg_attr(test, automock)]
+#[async_trait(?Send)]
 pub trait JujutsuOps {
     /// Get complete commit information for a revision
-    fn get_commit(&self, revision: &str) -> Result<Commit>;
+    async fn get_commit(&self, revision: &str) -> Result<Commit>;
 
     /// Get the head commits of the current stack (descendants of @ that aren't ancestors of trunk)
     /// Returns (change_id, commit_id) tuples for each head
-    fn get_stack_heads(&self) -> Result<Vec<(String, String)>>;
+    async fn get_stack_heads(&self) -> Result<Vec<(String, String)>>;
 
     /// Get all changes from revision back to (but not including) the main branch
     /// Returns them in order from tip to base as (change_id, commit_id) tuples
-    fn get_stack_changes(&self, revision: &str) -> Result<Vec<(String, String)>>;
+    async fn get_stack_changes(&self, revision: &str) -> Result<Vec<(String, String)>>;
 
     /// Get the commit ID of the trunk branch (main/master)
-    fn get_trunk_commit_id(&self) -> Result<String>;
+    async fn get_trunk_commit_id(&self) -> Result<String>;
 
     /// Check if `commit` is an ancestor of `descendant` using Jujutsu revsets
-    fn is_ancestor(&self, commit: &str, descendant: &str) -> Result<bool>;
+    async fn is_ancestor(&self, commit: &str, descendant: &str) -> Result<bool>;
 }
 
 /// Represents a commit with its IDs and message
@@ -62,8 +63,9 @@ impl Commit {
 /// Real implementation that calls the jj CLI
 pub struct RealJujutsu;
 
+#[async_trait(?Send)]
 impl JujutsuOps for RealJujutsu {
-    fn get_commit(&self, revision: &str) -> Result<Commit> {
+    async fn get_commit(&self, revision: &str) -> Result<Commit> {
         // Get commit_id, change_id, description, and parent change IDs in a single jj command
         let output = Command::new("jj")
             .args([
@@ -75,6 +77,7 @@ impl JujutsuOps for RealJujutsu {
                 r#"commit_id ++ "|" ++ change_id ++ "|" ++ description ++ "|" ++ parents.map(|p| p.change_id()).join(",")"#,
             ])
             .output()
+            .await
             .context("Failed to execute jj command")?;
 
         if !output.status.success() {
@@ -138,7 +141,7 @@ impl JujutsuOps for RealJujutsu {
         })
     }
 
-    fn get_stack_heads(&self) -> Result<Vec<(String, String)>> {
+    async fn get_stack_heads(&self) -> Result<Vec<(String, String)>> {
         // Find head commits in the current stack
         // These are commits descended from @ that aren't on trunk
         let heads_revset = "heads(descendants(@) ~ ancestors(trunk()))";
@@ -152,6 +155,7 @@ impl JujutsuOps for RealJujutsu {
                 r#"change_id ++ "|" ++ commit_id ++ "\n""#,
             ])
             .output()
+            .await
             .context("Failed to execute jj command")?;
 
         if !output.status.success() {
@@ -177,7 +181,7 @@ impl JujutsuOps for RealJujutsu {
         Ok(heads)
     }
 
-    fn get_stack_changes(&self, revision: &str) -> Result<Vec<(String, String)>> {
+    async fn get_stack_changes(&self, revision: &str) -> Result<Vec<(String, String)>> {
         // Get all ancestors of revision that are not ancestors of trunk (main/master)
         // trunk() is a jj built-in that automatically detects the main branch
         let stack_revset = format!("ancestors({}) ~ ancestors(trunk())", revision);
@@ -192,6 +196,7 @@ impl JujutsuOps for RealJujutsu {
                 "--reversed",
             ])
             .output()
+            .await
             .context("Failed to execute jj command")?;
 
         if !output.status.success() {
@@ -218,10 +223,11 @@ impl JujutsuOps for RealJujutsu {
         Ok(changes.into_iter().rev().collect())
     }
 
-    fn get_trunk_commit_id(&self) -> Result<String> {
+    async fn get_trunk_commit_id(&self) -> Result<String> {
         let output = Command::new("jj")
             .args(["log", "-r", "trunk()", "--no-graph", "-T", "commit_id"])
             .output()
+            .await
             .context("Failed to execute jj command")?;
 
         if !output.status.success() {
@@ -234,12 +240,13 @@ impl JujutsuOps for RealJujutsu {
         Ok(String::from_utf8(output.stdout)?.trim().to_string())
     }
 
-    fn is_ancestor(&self, commit: &str, descendant: &str) -> Result<bool> {
+    async fn is_ancestor(&self, commit: &str, descendant: &str) -> Result<bool> {
         // Check if commit is in ancestors(descendant) using Jujutsu revsets
         let revset = format!("ancestors({}) & {}", descendant, commit);
         let output = Command::new("jj")
             .args(["log", "-r", &revset, "--no-graph", "-T", "commit_id"])
             .output()
+            .await
             .context("Failed to execute jj command")?;
 
         if !output.status.success() {

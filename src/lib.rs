@@ -31,7 +31,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
 
     pub async fn cmd_create(&self, revision: &str, stdout: &mut impl std::io::Write) -> Result<()> {
         // Get commit information from jj
-        let commit = self.jj.get_commit(revision)?;
+        let commit = self.jj.get_commit(revision).await?;
 
         // Validate commit message is not empty
         if commit.message.title.is_none() {
@@ -46,7 +46,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         writeln!(stdout, "Change ID: {}", commit.change_id)?;
         writeln!(stdout, "Commit ID: {}", commit.commit_id)?;
 
-        self.validate_not_merged_to_main(&commit)?;
+        self.validate_not_merged_to_main(&commit).await?;
 
         // PR branch names: current and base
         let short_change_id = &commit.change_id[..CHANGE_ID_LENGTH.min(commit.change_id.len())];
@@ -54,7 +54,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
 
         // Fetch all branches once
         let all_branches = self.gh.find_branches_with_prefix("").await?;
-        let base_branch = self.find_previous_branch(revision, &all_branches)?;
+        let base_branch = self.find_previous_branch(revision, &all_branches).await?;
 
         writeln!(stdout, "PR branch: {}", pr_branch)?;
         writeln!(stdout, "Base branch: {}", base_branch)?;
@@ -102,7 +102,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         // Create PR
         let pr_url = self
             .gh
-            .pr_create(&pr_branch, &base_branch, pr_title, &pr_body)
+            .pr_create(&pr_branch, &base_branch, pr_title, pr_body)
             .await?;
         writeln!(
             stdout,
@@ -121,12 +121,12 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         stdout: &mut impl std::io::Write,
     ) -> Result<()> {
         // Get commit information from jj
-        let commit = self.jj.get_commit(revision)?;
+        let commit = self.jj.get_commit(revision).await?;
 
         writeln!(stdout, "Change ID: {}", commit.change_id)?;
         writeln!(stdout, "Commit ID: {}", commit.commit_id)?;
 
-        self.validate_not_merged_to_main(&commit)?;
+        self.validate_not_merged_to_main(&commit).await?;
         self.check_parent_prs_up_to_date(revision).await?;
 
         // PR branch names: current and base
@@ -135,7 +135,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
 
         // Fetch all branches once
         let all_branches = self.gh.find_branches_with_prefix("").await?;
-        let base_branch = self.find_previous_branch(revision, &all_branches)?;
+        let base_branch = self.find_previous_branch(revision, &all_branches).await?;
 
         writeln!(stdout, "PR branch: {}", pr_branch)?;
         writeln!(stdout, "Base branch: {}", base_branch)?;
@@ -180,13 +180,13 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
             let commit = self.git.commit_tree_merge(
                 &tree,
                 vec![old_pr_tip.clone(), base_tip.clone()],
-                &commit_message,
+                commit_message,
             )?;
             writeln!(stdout, "Created new merge commit: {}", commit)?;
             commit
         } else {
             // Tree changed but base hasn't - create regular commit with single parent
-            let commit = self.git.commit_tree(&tree, &old_pr_tip, &commit_message)?;
+            let commit = self.git.commit_tree(&tree, &old_pr_tip, commit_message)?;
             writeln!(stdout, "Created new commit: {}", commit)?;
             commit
         };
@@ -232,12 +232,12 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         stdout: &mut impl std::io::Write,
     ) -> Result<()> {
         // Get commit information from jj
-        let commit = self.jj.get_commit(revision)?;
+        let commit = self.jj.get_commit(revision).await?;
 
         writeln!(stdout, "Change ID: {}", commit.change_id)?;
         writeln!(stdout, "Commit ID: {}", commit.commit_id)?;
 
-        self.validate_not_merged_to_main(&commit)?;
+        self.validate_not_merged_to_main(&commit).await?;
         self.check_parent_prs_up_to_date(revision).await?;
 
         // PR branch names: current and base
@@ -246,7 +246,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
 
         // Fetch all branches once
         let all_branches = self.gh.find_branches_with_prefix("").await?;
-        let base_branch = self.find_previous_branch(revision, &all_branches)?;
+        let base_branch = self.find_previous_branch(revision, &all_branches).await?;
 
         writeln!(stdout, "PR branch: {}", pr_branch)?;
         writeln!(stdout, "Base branch: {}", base_branch)?;
@@ -349,10 +349,10 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         stderr: &mut impl std::io::Write,
     ) -> Result<()> {
         // Get the current commit to mark it in the output
-        let current_commit = self.jj.get_commit("@")?;
+        let current_commit = self.jj.get_commit("@").await?;
 
         // Find the head(s) of the current stack
-        let heads = self.jj.get_stack_heads()?;
+        let heads = self.jj.get_stack_heads().await?;
 
         // Collect all changes to process
         let changes: Vec<(String, String)> = if heads.is_empty() {
@@ -364,14 +364,14 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         } else if heads.len() == 1 {
             // Single head - show from head back to trunk
             let (_head_change_id, head_commit_id) = &heads[0];
-            self.jj.get_stack_changes(head_commit_id)?
+            self.jj.get_stack_changes(head_commit_id).await?
         } else {
             // Multiple heads detected - show from @ to trunk with warning
             writeln!(
                 stderr,
                 "Warning: Multiple stack heads detected. Showing stack from @ to trunk."
             )?;
-            self.jj.get_stack_changes("@")?
+            self.jj.get_stack_changes("@").await?
         };
 
         // Fetch all branches once
@@ -387,7 +387,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
             }
 
             // Also collect parent branches
-            if let Ok(commit) = self.jj.get_commit(change_id) {
+            if let Ok(commit) = self.jj.get_commit(change_id).await {
                 for parent_change_id in commit.parent_change_ids {
                     let short_parent_id =
                         &parent_change_id[..CHANGE_ID_LENGTH.min(parent_change_id.len())];
@@ -434,11 +434,12 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         // Fetch all PR URLs concurrently
         let pr_urls = join_all(pr_url_futures).await;
 
-        // Get base branches (no longer async, uses cached all_branches)
-        let base_branches: Vec<_> = changes
+        // Get base branches concurrently
+        let base_branch_futures: Vec<_> = changes
             .iter()
             .map(|(change_id, _commit_id)| self.find_previous_branch(change_id, &all_branches))
             .collect();
+        let base_branches = join_all(base_branch_futures).await;
 
         // Display results
         for (i, (change_id, commit_id)) in changes.iter().enumerate() {
@@ -448,7 +449,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
             let base_branch_result = &base_branches[i];
 
             // Get commit and extract title from message
-            let commit = self.jj.get_commit(commit_id)?;
+            let commit = self.jj.get_commit(commit_id).await?;
             let commit_title = commit.message.title.as_deref().unwrap_or("");
 
             // Get abbreviated change ID (4 chars, matching jj status default)
@@ -456,7 +457,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
 
             // Check if parent PR is outdated
             let parent_pr_outdated =
-                self.is_parent_pr_outdated(change_id, &all_branches, &pr_diffs)?;
+                self.is_parent_pr_outdated(change_id, &all_branches, &pr_diffs).await?;
 
             // Get base branch (or default to empty string if error)
             let base_branch = base_branch_result.as_ref().ok();
@@ -484,14 +485,14 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
     /// Check if any parent PR is out of date
     /// A parent is outdated if its local single commit diff differs from cumulative remote diff,
     /// or if the parent itself needs a restack (recursive check)
-    fn is_parent_pr_outdated(
+    async fn is_parent_pr_outdated(
         &self,
         revision: &str,
         all_branches: &[String],
         pr_diffs: &HashMap<String, String>,
     ) -> Result<bool> {
         // Get parent change IDs from commit
-        let commit = self.jj.get_commit(revision)?;
+        let commit = self.jj.get_commit(revision).await?;
         let parent_change_ids = commit.parent_change_ids;
 
         // For each parent, check if it has a PR and if it's outdated
@@ -502,7 +503,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
             // If this parent has a PR branch, check if it's outdated
             if all_branches.contains(&parent_branch) {
                 // Compare parent's local single commit diff vs cumulative PR diff from cache
-                let parent_commit = self.jj.get_commit(&parent_change_id)?;
+                let parent_commit = self.jj.get_commit(&parent_change_id).await?;
                 let parent_local_diff = self.git.get_commit_diff(&parent_commit.commit_id)?;
 
                 if let Some(parent_pr_diff) = pr_diffs.get(&parent_branch) {
@@ -513,7 +514,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
 
                 // Check if parent's base has moved
                 if let Ok(parent_base_branch) =
-                    self.find_previous_branch(&parent_change_id, all_branches)
+                    self.find_previous_branch(&parent_change_id, all_branches).await
                 {
                     if let Ok(parent_pr_commit) = self.git.get_branch(&parent_branch) {
                         if let Ok(base_tip) = self.git.get_branch(&parent_base_branch) {
@@ -526,7 +527,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
                 }
 
                 // Recursively check if the parent itself needs a restack
-                if self.is_parent_pr_outdated(&parent_change_id, all_branches, pr_diffs)? {
+                if Box::pin(self.is_parent_pr_outdated(&parent_change_id, all_branches, pr_diffs)).await? {
                     return Ok(true); // Parent's ancestor is outdated
                 }
             }
@@ -640,10 +641,10 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
     }
 
     /// Validate that a commit is not already merged to trunk
-    fn validate_not_merged_to_main(&self, commit: &jujutsu::Commit) -> Result<()> {
-        let trunk_commit = self.jj.get_trunk_commit_id()?;
+    async fn validate_not_merged_to_main(&self, commit: &jujutsu::Commit) -> Result<()> {
+        let trunk_commit = self.jj.get_trunk_commit_id().await?;
 
-        if self.jj.is_ancestor(&commit.commit_id, &trunk_commit)? {
+        if self.jj.is_ancestor(&commit.commit_id, &trunk_commit).await? {
             return Err(anyhow::anyhow!(
                 "Cannot create PR: commit {} is an ancestor of trunk. This commit is already merged.",
                 commit.commit_id
@@ -654,9 +655,9 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
     }
 
     /// Find the previous PR branch in the stack based on parent change IDs from jujutsu
-    fn find_previous_branch(&self, revision: &str, all_branches: &[String]) -> Result<String> {
+    async fn find_previous_branch(&self, revision: &str, all_branches: &[String]) -> Result<String> {
         // Get parent change IDs from commit
-        let commit = self.jj.get_commit(revision)?;
+        let commit = self.jj.get_commit(revision).await?;
         let parent_change_ids = commit.parent_change_ids;
 
         // For each parent, check if a PR branch exists
@@ -678,8 +679,8 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
     /// Returns an error if any parent PR has a local single commit diff that doesn't match cumulative remote diff
     async fn check_parent_prs_up_to_date(&self, revision: &str) -> Result<()> {
         // Get all changes in the stack from revision back to trunk
-        let commit = self.jj.get_commit(revision)?;
-        let stack_changes = self.jj.get_stack_changes(&commit.commit_id)?;
+        let commit = self.jj.get_commit(revision).await?;
+        let stack_changes = self.jj.get_stack_changes(&commit.commit_id).await?;
 
         // Fetch all branches once
         let all_branches = self.gh.find_branches_with_prefix("").await?;
@@ -718,7 +719,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
             branches_to_check.iter().zip(pr_diff_results.iter())
         {
             // Get the commit for this change
-            let commit_in_stack = self.jj.get_commit(change_id)?;
+            let commit_in_stack = self.jj.get_commit(change_id).await?;
 
             // Compare local single commit diff vs cumulative PR diff from GitHub
             let local_diff = self.git.get_commit_diff(&commit_in_stack.commit_id)?;
@@ -814,8 +815,8 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    #[test]
-    fn test_find_previous_branch() {
+    #[tokio::test]
+    async fn test_find_previous_branch() {
         let mut mock_jj = MockJujutsuOps::new();
         mock_jj.expect_get_commit().returning(|_| {
             Ok(Commit {
@@ -832,13 +833,13 @@ mod tests {
         let app = App::new(mock_jj, MockGitOps::new(), MockGithubOps::new());
 
         let all_branches = vec!["jnb/abc12345".to_string()];
-        let result = app.find_previous_branch("@", &all_branches);
+        let result = app.find_previous_branch("@", &all_branches).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "jnb/abc12345");
     }
 
-    #[test]
-    fn test_find_previous_branch_defaults_to_master() {
+    #[tokio::test]
+    async fn test_find_previous_branch_defaults_to_master() {
         let mut mock_jj = MockJujutsuOps::new();
         mock_jj.expect_get_commit().returning(|_| {
             Ok(Commit {
@@ -855,7 +856,7 @@ mod tests {
         let app = App::new(mock_jj, MockGitOps::new(), MockGithubOps::new());
 
         let all_branches = vec!["jnb/abc12345".to_string()];
-        let result = app.find_previous_branch("@", &all_branches);
+        let result = app.find_previous_branch("@", &all_branches).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "master");
     }

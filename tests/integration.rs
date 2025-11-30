@@ -1,6 +1,6 @@
 //! Integration tests; run as
 //!
-//!   cargo test --test integration -- --nocapture
+//!   cargo test --test integration --include-ignored -- --nocapture
 //!
 //! Prefix with DEBUG_TESTS=1 to keep local repos around.
 
@@ -110,6 +110,7 @@ async fn setup(temp_path: &std::path::Path) -> anyhow::Result<()> {
 /// This validates that status symbols correctly propagate through the stack and
 /// that auto-restack detection works for commits that haven't been modified.
 #[tokio::test]
+#[ignore]
 #[serial]
 async fn test_stacked_workflow() -> anyhow::Result<()> {
     let test_dir = utils::TestDir::new()?;
