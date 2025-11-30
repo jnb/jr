@@ -11,13 +11,27 @@ use std::sync::LazyLock;
 
 use jr::ops::github::GithubOps as _;
 use jr::ops::github::RealGithub;
-use serial_test::serial;
+use serde::Deserialize;
 use tracing::instrument;
 
-const GITHUB_USER: &str = "jnb";
-const GITHUB_REPO: &str = "test_repo";
+#[derive(Debug, Deserialize)]
+struct TestConfig {
+    github_user: String,
+    github_repo: String,
+    git_branch_prefix: String,
+}
 
-const GIT_BRANCH_PREFIX: &str = "jnb/";
+impl TestConfig {
+    fn load() -> anyhow::Result<Self> {
+        let config_path = std::path::Path::new(".jr.test.yaml");
+        let config_str = std::fs::read_to_string(config_path)?;
+        let config: TestConfig = serde_yaml::from_str(&config_str)?;
+        Ok(config)
+    }
+}
+
+static TEST_CONFIG: LazyLock<TestConfig> =
+    LazyLock::new(|| TestConfig::load().expect("Failed to load .jr.test.yaml"));
 
 /// Normalize IDs for snapshot comparisons.
 static INSTA_FILTERS: LazyLock<Vec<(&'static str, &'static str)>> = LazyLock::new(|| {
@@ -30,7 +44,7 @@ static INSTA_FILTERS: LazyLock<Vec<(&'static str, &'static str)>> = LazyLock::ne
         (r"(\s)[0-9a-f]{40}(\s)", "$1[OBJID]$2"),
         // Branch
         (
-            Box::leak(format!("{}[k-z]{{8}}", GIT_BRANCH_PREFIX).into_boxed_str()),
+            Box::leak(format!("{}[k-z]{{8}}", TEST_CONFIG.git_branch_prefix).into_boxed_str()),
             "[BRANCH]",
         ),
         // Pull request ID
@@ -38,7 +52,7 @@ static INSTA_FILTERS: LazyLock<Vec<(&'static str, &'static str)>> = LazyLock::ne
             Box::leak(
                 format!(
                     r"(https://github.com)/{}/{}/pull/\d+",
-                    GITHUB_USER, GITHUB_REPO
+                    TEST_CONFIG.github_user, TEST_CONFIG.github_repo
                 )
                 .into_boxed_str(),
             ),
@@ -60,7 +74,10 @@ async fn setup(temp_path: &std::path::Path) -> anyhow::Result<()> {
     utils::create_git_repo(temp_path).await?;
     utils::setup_git_remote(
         temp_path,
-        &format!("git@github.com:{GITHUB_USER}/test_repo.git"),
+        &format!(
+            "git@github.com:{}/{}.git",
+            TEST_CONFIG.github_user, TEST_CONFIG.github_repo
+        ),
     )
     .await?;
     utils::init_jujutsu(temp_path).await?;
@@ -71,7 +88,7 @@ async fn setup(temp_path: &std::path::Path) -> anyhow::Result<()> {
 
     // Find all branches and delete them
     let branches = RealGithub
-        .find_branches_with_prefix(GIT_BRANCH_PREFIX)
+        .find_branches_with_prefix(&TEST_CONFIG.git_branch_prefix)
         .await?;
     println!("Found {} branches to delete", branches.len());
     for branch in branches {
@@ -116,14 +133,13 @@ async fn setup(temp_path: &std::path::Path) -> anyhow::Result<()> {
 /// that auto-restack detection works for commits that haven't been modified.
 #[tokio::test]
 #[ignore]
-#[serial]
 async fn test_stacked_workflow() -> anyhow::Result<()> {
     let test_dir = utils::TestDir::new()?;
     insta::assert_snapshot!("", @""); // Display insta code lense
 
     setup(test_dir.path()).await?;
 
-    let config = jr::Config::new(GIT_BRANCH_PREFIX.to_string(), 8);
+    let config = jr::Config::new(TEST_CONFIG.git_branch_prefix.clone(), 8);
     let app = jr::App::new(
         config,
         jr::ops::jujutsu::RealJujutsu,
