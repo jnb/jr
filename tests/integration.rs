@@ -1,6 +1,6 @@
 //! Integration tests; run as
 //!
-//!   cargo test --test integration --include-ignored -- --nocapture
+//!   cargo test --test integration -- --nocapture --include-ignored
 //!
 //! Prefix with DEBUG_TESTS=1 to keep local repos around.
 
