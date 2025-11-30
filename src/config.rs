@@ -23,7 +23,7 @@ impl Config {
 
         let config_file = if config_path.exists() {
             let contents = std::fs::read_to_string(&config_path)?;
-            serde_yaml::from_str::<ConfigFile>(&contents)?
+            serde_yml::from_str::<ConfigFile>(&contents)?
         } else {
             ConfigFile {
                 branch_prefix: None,

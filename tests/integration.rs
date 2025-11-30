@@ -25,7 +25,7 @@ impl TestConfig {
     fn load() -> anyhow::Result<Self> {
         let config_path = std::path::Path::new(".jr.test.yaml");
         let config_str = std::fs::read_to_string(config_path)?;
-        let config: TestConfig = serde_yaml::from_str(&config_str)?;
+        let config: TestConfig = serde_yml::from_str(&config_str)?;
         Ok(config)
     }
 }
