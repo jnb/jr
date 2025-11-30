@@ -60,12 +60,12 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         writeln!(stdout, "Base branch: {}", base_branch)?;
 
         // Get the tree from the current Jujutsu commit (represents current state)
-        let tree = self.git.get_tree(&commit.commit_id)?;
+        let tree = self.git.get_tree(&commit.commit_id).await?;
         writeln!(stdout, "Tree: {}", tree)?;
 
         // Check if PR branch already exists - if so, check if it's up to date
-        if let Ok(existing_branch_tip) = self.git.get_branch(&pr_branch) {
-            let existing_tree = self.git.get_tree(&existing_branch_tip)?;
+        if let Ok(existing_branch_tip) = self.git.get_branch(&pr_branch).await {
+            let existing_tree = self.git.get_tree(&existing_branch_tip).await?;
             if tree == existing_tree {
                 return Err(anyhow::anyhow!(
                     "PR branch {} already exists and is up to date.",
@@ -83,20 +83,22 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         let parent = self
             .git
             .get_branch(&base_branch)
+            .await
             .context(format!("Base branch {} does not exist", base_branch))?;
 
         // Create new commit with jj commit message
         let new_commit = self
             .git
-            .commit_tree(&tree, &parent, &commit.full_message())?;
+            .commit_tree(&tree, &parent, &commit.full_message())
+            .await?;
         writeln!(stdout, "Created new commit: {}", new_commit)?;
 
         // Update PR branch to point to new commit
-        self.git.update_branch(&pr_branch, &new_commit)?;
+        self.git.update_branch(&pr_branch, &new_commit).await?;
         writeln!(stdout, "Updated PR branch {}", pr_branch)?;
 
         // Push PR branch
-        self.git.push_branch(&pr_branch)?;
+        self.git.push_branch(&pr_branch).await?;
         writeln!(stdout, "Pushed PR branch {}", pr_branch)?;
 
         // Create PR
@@ -141,11 +143,11 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         writeln!(stdout, "Base branch: {}", base_branch)?;
 
         // Get the tree from the current Jujutsu commit (represents current state)
-        let tree = self.git.get_tree(&commit.commit_id)?;
+        let tree = self.git.get_tree(&commit.commit_id).await?;
         writeln!(stdout, "Tree: {}", tree)?;
 
         // PR branch must exist for update
-        let _existing_pr_branch = self.git.get_branch(&pr_branch).context(format!(
+        let _existing_pr_branch = self.git.get_branch(&pr_branch).await.context(format!(
             "PR branch {} does not exist. Use 'jr create' to create a new PR.",
             pr_branch
         ))?;
@@ -156,18 +158,20 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         let old_pr_tip = self
             .git
             .get_branch(&pr_branch)
+            .await
             .context(format!("PR branch {} does not exist", pr_branch))?;
         let base_tip = self
             .git
             .get_branch(&base_branch)
+            .await
             .context(format!("Base branch {} does not exist", base_branch))?;
 
         // Use the provided commit message
         let commit_message = message;
 
         // Check if we need to create a new commit
-        let old_pr_tree = self.git.get_tree(&old_pr_tip)?;
-        let base_has_changed = !self.git.is_ancestor(&base_tip, &old_pr_tip)?;
+        let old_pr_tree = self.git.get_tree(&old_pr_tip).await?;
+        let base_has_changed = !self.git.is_ancestor(&base_tip, &old_pr_tip).await?;
 
         let new_commit = if tree == old_pr_tree && !base_has_changed {
             writeln!(
@@ -181,12 +185,12 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
                 &tree,
                 vec![old_pr_tip.clone(), base_tip.clone()],
                 commit_message,
-            )?;
+            ).await?;
             writeln!(stdout, "Created new merge commit: {}", commit)?;
             commit
         } else {
             // Tree changed but base hasn't - create regular commit with single parent
-            let commit = self.git.commit_tree(&tree, &old_pr_tip, commit_message)?;
+            let commit = self.git.commit_tree(&tree, &old_pr_tip, commit_message).await?;
             writeln!(stdout, "Created new commit: {}", commit)?;
             commit
         };
@@ -198,11 +202,11 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         }
 
         // Update PR branch to point to new commit
-        self.git.update_branch(&pr_branch, &new_commit)?;
+        self.git.update_branch(&pr_branch, &new_commit).await?;
         writeln!(stdout, "Updated PR branch {}", pr_branch)?;
 
         // Push PR branch
-        self.git.push_branch(&pr_branch)?;
+        self.git.push_branch(&pr_branch).await?;
         writeln!(stdout, "Pushed PR branch {}", pr_branch)?;
 
         // Update PR base if needed
@@ -252,11 +256,11 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         writeln!(stdout, "Base branch: {}", base_branch)?;
 
         // Get the tree from the current Jujutsu commit (represents current state)
-        let tree = self.git.get_tree(&commit.commit_id)?;
+        let tree = self.git.get_tree(&commit.commit_id).await?;
         writeln!(stdout, "Tree: {}", tree)?;
 
         // PR branch must exist for restack
-        let _existing_pr_branch = self.git.get_branch(&pr_branch).context(format!(
+        let _existing_pr_branch = self.git.get_branch(&pr_branch).await.context(format!(
             "PR branch {} does not exist. Use 'jr create' to create a new PR.",
             pr_branch
         ))?;
@@ -264,7 +268,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         writeln!(stdout, "PR branch {} exists", pr_branch)?;
 
         // Check if this is a pure restack (no local changes)
-        let local_change_diff = self.git.get_commit_diff(&commit.commit_id)?;
+        let local_change_diff = self.git.get_commit_diff(&commit.commit_id).await?;
         let pr_cumulative_diff = self.gh.pr_diff(&pr_branch).await?;
 
         if local_change_diff != pr_cumulative_diff {
@@ -279,17 +283,19 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         let old_pr_tip = self
             .git
             .get_branch(&pr_branch)
+            .await
             .context(format!("PR branch {} does not exist", pr_branch))?;
         let base_tip = self
             .git
             .get_branch(&base_branch)
+            .await
             .context(format!("Base branch {} does not exist", base_branch))?;
 
         let commit_message = "Restack";
 
         // Check if we need to create a new commit
-        let old_pr_tree = self.git.get_tree(&old_pr_tip)?;
-        let base_has_changed = !self.git.is_ancestor(&base_tip, &old_pr_tip)?;
+        let old_pr_tree = self.git.get_tree(&old_pr_tip).await?;
+        let base_has_changed = !self.git.is_ancestor(&base_tip, &old_pr_tip).await?;
 
         let new_commit = if tree == old_pr_tree && !base_has_changed {
             writeln!(
@@ -303,7 +309,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
                 &tree,
                 vec![old_pr_tip.clone(), base_tip.clone()],
                 commit_message,
-            )?;
+            ).await?;
             writeln!(stdout, "Created new merge commit: {}", commit)?;
             commit
         };
@@ -315,11 +321,11 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         }
 
         // Update PR branch to point to new commit
-        self.git.update_branch(&pr_branch, &new_commit)?;
+        self.git.update_branch(&pr_branch, &new_commit).await?;
         writeln!(stdout, "Updated PR branch {}", pr_branch)?;
 
         // Push PR branch
-        self.git.push_branch(&pr_branch)?;
+        self.git.push_branch(&pr_branch).await?;
         writeln!(stdout, "Pushed PR branch {}", pr_branch)?;
 
         // Update PR base if needed
@@ -504,7 +510,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
             if all_branches.contains(&parent_branch) {
                 // Compare parent's local single commit diff vs cumulative PR diff from cache
                 let parent_commit = self.jj.get_commit(&parent_change_id).await?;
-                let parent_local_diff = self.git.get_commit_diff(&parent_commit.commit_id)?;
+                let parent_local_diff = self.git.get_commit_diff(&parent_commit.commit_id).await?;
 
                 if let Some(parent_pr_diff) = pr_diffs.get(&parent_branch) {
                     if &parent_local_diff != parent_pr_diff {
@@ -516,10 +522,10 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
                 if let Ok(parent_base_branch) =
                     self.find_previous_branch(&parent_change_id, all_branches).await
                 {
-                    if let Ok(parent_pr_commit) = self.git.get_branch(&parent_branch) {
-                        if let Ok(base_tip) = self.git.get_branch(&parent_base_branch) {
+                    if let Ok(parent_pr_commit) = self.git.get_branch(&parent_branch).await {
+                        if let Ok(base_tip) = self.git.get_branch(&parent_base_branch).await {
                             // If base is not an ancestor of parent's PR, base has moved
-                            if !self.git.is_ancestor(&base_tip, &parent_pr_commit)? {
+                            if !self.git.is_ancestor(&base_tip, &parent_pr_commit).await? {
                                 return Ok(true); // Parent's base has moved, needs restack
                             }
                         }
@@ -561,7 +567,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
             match pr_url_result {
                 Ok(Some(_)) => {
                     // Compare local single commit diff vs cumulative PR diff from cache
-                    let local_diff = self.git.get_commit_diff(commit_id);
+                    let local_diff = self.git.get_commit_diff(commit_id).await;
 
                     match local_diff {
                         Ok(local_diff) => {
@@ -569,14 +575,15 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
                                 // Check if base branch has moved (not an ancestor of PR branch)
                                 let base_has_moved = if let Some(base_branch) = _base_branch {
                                     // Get PR branch tip
-                                    if let Ok(pr_branch_tip) = self.git.get_branch(expected_branch)
+                                    if let Ok(pr_branch_tip) = self.git.get_branch(expected_branch).await
                                     {
                                         // Get base branch tip
-                                        if let Ok(base_tip) = self.git.get_branch(base_branch) {
+                                        if let Ok(base_tip) = self.git.get_branch(base_branch).await {
                                             // If base is not an ancestor of PR, base has moved
                                             !self
                                                 .git
                                                 .is_ancestor(&base_tip, &pr_branch_tip)
+                                                .await
                                                 .unwrap_or(false)
                                         } else {
                                             false
@@ -722,7 +729,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
             let commit_in_stack = self.jj.get_commit(change_id).await?;
 
             // Compare local single commit diff vs cumulative PR diff from GitHub
-            let local_diff = self.git.get_commit_diff(&commit_in_stack.commit_id)?;
+            let local_diff = self.git.get_commit_diff(&commit_in_stack.commit_id).await?;
             let pr_diff = pr_diff_result
                 .as_ref()
                 .map_err(|e| anyhow::anyhow!("{}", e))?;
