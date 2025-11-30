@@ -5,12 +5,6 @@ use serde::Deserialize;
 use serde::Serialize;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct ConfigFile {
-    #[serde(default)]
-    pub branch_prefix: Option<String>,
-}
-
-#[derive(Debug, Clone)]
 pub struct Config {
     pub branch_prefix: String,
 }
@@ -28,24 +22,16 @@ impl Config {
         }
 
         let contents = std::fs::read_to_string(&config_path)?;
-        let config_file = serde_yml::from_str::<ConfigFile>(&contents)?;
+        let config = serde_yml::from_str::<Config>(&contents)?;
 
-        Ok(Self {
-            branch_prefix: config_file
-                .branch_prefix
-                .unwrap_or_else(Self::default_branch_prefix),
-        })
+        Ok(config)
     }
 
     /// Save config to <repo_root>/.jr.yaml
     pub fn save(&self) -> Result<()> {
         let config_path = Self::config_path()?;
 
-        let config_file = ConfigFile {
-            branch_prefix: Some(self.branch_prefix.clone()),
-        };
-
-        let contents = serde_yml::to_string(&config_file)?;
+        let contents = serde_yml::to_string(self)?;
         std::fs::write(&config_path, contents)?;
 
         Ok(())
