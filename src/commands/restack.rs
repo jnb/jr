@@ -1,6 +1,7 @@
 use anyhow::Context;
 use anyhow::Result;
 
+use crate::app::CHANGE_ID_LENGTH;
 use crate::ops::git::GitOps;
 use crate::ops::github::GithubOps;
 use crate::ops::jujutsu::JujutsuOps;
@@ -22,7 +23,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         self.check_parent_prs_up_to_date(revision).await?;
 
         // PR branch names: current and base
-        let short_change_id = &commit.change_id[..self.config.change_id_length.min(commit.change_id.len())];
+        let short_change_id = &commit.change_id[..CHANGE_ID_LENGTH.min(commit.change_id.len())];
         let pr_branch = format!("{}{}", self.config.branch_prefix, short_change_id);
 
         // Fetch all branches once

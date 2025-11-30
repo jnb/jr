@@ -139,7 +139,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
 
     setup(test_dir.path()).await?;
 
-    let config = jr::Config::new(TEST_CONFIG.git_branch_prefix.clone(), 8);
+    let config = jr::Config::new(TEST_CONFIG.git_branch_prefix.clone());
     let app = jr::App::new(
         config,
         jr::ops::jujutsu::RealJujutsu,

@@ -8,6 +8,9 @@ use crate::ops::git::GitOps;
 use crate::ops::github::GithubOps;
 use crate::ops::jujutsu::JujutsuOps;
 
+/// Length of the change ID to use in branch names
+pub const CHANGE_ID_LENGTH: usize = 8;
+
 pub struct App<J: JujutsuOps, G: GitOps, H: GithubOps> {
     pub config: Config,
     pub jj: J,
@@ -52,7 +55,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
 
         // For each parent, check if a PR branch exists
         for parent_change_id in parent_change_ids {
-            let short_parent_id = &parent_change_id[..self.config.change_id_length.min(parent_change_id.len())];
+            let short_parent_id = &parent_change_id[..CHANGE_ID_LENGTH.min(parent_change_id.len())];
             let parent_branch = format!("{}{}", self.config.branch_prefix, short_parent_id);
 
             // Check if this PR branch exists
@@ -80,7 +83,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
             .iter()
             .filter(|(_, commit_id_in_stack)| commit_id_in_stack != &commit.commit_id)
             .filter_map(|(change_id, _commit_id_in_stack)| {
-                let short_change_id = &change_id[..self.config.change_id_length.min(change_id.len())];
+                let short_change_id = &change_id[..CHANGE_ID_LENGTH.min(change_id.len())];
                 let expected_branch = format!("{}{}", self.config.branch_prefix, short_change_id);
                 if all_branches.contains(&expected_branch) {
                     Some((
@@ -143,7 +146,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
 
         // For each parent, check if it has a PR and if it's outdated
         for parent_change_id in parent_change_ids {
-            let short_parent_id = &parent_change_id[..self.config.change_id_length.min(parent_change_id.len())];
+            let short_parent_id = &parent_change_id[..CHANGE_ID_LENGTH.min(parent_change_id.len())];
             let parent_branch = format!("{}{}", self.config.branch_prefix, short_parent_id);
 
             // If this parent has a PR branch, check if it's outdated

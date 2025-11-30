@@ -6,14 +6,11 @@ use std::path::PathBuf;
 pub struct ConfigFile {
     #[serde(default)]
     pub branch_prefix: Option<String>,
-    #[serde(default)]
-    pub change_id_length: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Config {
     pub branch_prefix: String,
-    pub change_id_length: usize,
 }
 
 impl Config {
@@ -27,7 +24,6 @@ impl Config {
         } else {
             ConfigFile {
                 branch_prefix: None,
-                change_id_length: None,
             }
         };
 
@@ -35,23 +31,18 @@ impl Config {
             branch_prefix: config_file
                 .branch_prefix
                 .unwrap_or_else(Self::default_branch_prefix),
-            change_id_length: config_file.change_id_length.unwrap_or(8),
         })
     }
 
     /// Create a new config with explicit values (useful for tests)
-    pub fn new(branch_prefix: String, change_id_length: usize) -> Self {
-        Self {
-            branch_prefix,
-            change_id_length,
-        }
+    pub fn new(branch_prefix: String) -> Self {
+        Self { branch_prefix }
     }
 
     /// Default config for tests
     pub fn default_for_tests() -> Self {
         Self {
             branch_prefix: "test/".to_string(),
-            change_id_length: 8,
         }
     }
 
@@ -78,14 +69,12 @@ mod tests {
     fn test_default_for_tests() {
         let config = Config::default_for_tests();
         assert_eq!(config.branch_prefix, "test/");
-        assert_eq!(config.change_id_length, 8);
     }
 
     #[test]
     fn test_new() {
-        let config = Config::new("custom/".to_string(), 10);
+        let config = Config::new("custom/".to_string());
         assert_eq!(config.branch_prefix, "custom/");
-        assert_eq!(config.change_id_length, 10);
     }
 
     #[test]

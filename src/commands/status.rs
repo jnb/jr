@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use anyhow::Result;
 use futures_util::future::join_all;
 
+use crate::app::CHANGE_ID_LENGTH;
 use crate::ops::git::GitOps;
 use crate::ops::github::GithubOps;
 use crate::ops::jujutsu::JujutsuOps;
@@ -46,7 +47,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         // Collect all unique branches we need pr_diffs for (changes + their parents)
         let mut branches_needing_diffs = std::collections::HashSet::new();
         for (change_id, _commit_id) in &changes {
-            let short_change_id = &change_id[..self.config.change_id_length.min(change_id.len())];
+            let short_change_id = &change_id[..CHANGE_ID_LENGTH.min(change_id.len())];
             let expected_branch = format!("{}{}", self.config.branch_prefix, short_change_id);
             if all_branches.contains(&expected_branch) {
                 branches_needing_diffs.insert(expected_branch);
@@ -56,7 +57,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
             if let Ok(commit) = self.jj.get_commit(change_id).await {
                 for parent_change_id in commit.parent_change_ids {
                     let short_parent_id =
-                        &parent_change_id[..self.config.change_id_length.min(parent_change_id.len())];
+                        &parent_change_id[..CHANGE_ID_LENGTH.min(parent_change_id.len())];
                     let parent_branch = format!("{}{}", self.config.branch_prefix, short_parent_id);
                     if all_branches.contains(&parent_branch) {
                         branches_needing_diffs.insert(parent_branch);
@@ -83,7 +84,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         let pr_url_futures: Vec<_> = changes
             .iter()
             .map(|(change_id, _commit_id)| {
-                let short_change_id = &change_id[..self.config.change_id_length.min(change_id.len())];
+                let short_change_id = &change_id[..CHANGE_ID_LENGTH.min(change_id.len())];
                 let expected_branch = format!("{}{}", self.config.branch_prefix, short_change_id);
                 let branch_exists = all_branches.contains(&expected_branch);
 
@@ -109,7 +110,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
 
         // Display results
         for (i, (change_id, commit_id)) in changes.iter().enumerate() {
-            let short_change_id = &change_id[..self.config.change_id_length.min(change_id.len())];
+            let short_change_id = &change_id[..CHANGE_ID_LENGTH.min(change_id.len())];
             let expected_branch = format!("{}{}", self.config.branch_prefix, short_change_id);
             let pr_url_result = &pr_urls[i];
             let base_branch_result = &base_branches[i];
