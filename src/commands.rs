@@ -1,3 +1,5 @@
+//! Command implementations for jr CLI operations.
+
 pub mod create;
 pub mod init;
 pub mod restack;
