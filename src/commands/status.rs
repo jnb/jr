@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use anyhow::Result;
-use futures::future::join_all;
+use futures_util::future::join_all;
 
 use crate::ops::git::GitOps;
 use crate::ops::github::GithubOps;

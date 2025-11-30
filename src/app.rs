@@ -102,7 +102,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
                 (branch.clone(), diff)
             })
             .collect();
-        let pr_diff_results = futures::future::join_all(pr_diff_futures).await;
+        let pr_diff_results = futures_util::future::join_all(pr_diff_futures).await;
 
         // Check each change in the stack
         for ((change_id, _, expected_branch), (_, pr_diff_result)) in
