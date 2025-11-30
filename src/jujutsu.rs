@@ -1,7 +1,8 @@
+#![allow(async_fn_in_trait)]
+
 use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result;
-use async_trait::async_trait;
 use tokio::process::Command;
 #[cfg(test)]
 use mockall::automock;
@@ -11,7 +12,6 @@ use mockall::automock;
 
 /// Operations for interacting with Jujutsu version control
 #[cfg_attr(test, automock)]
-#[async_trait(?Send)]
 pub trait JujutsuOps {
     /// Get complete commit information for a revision
     async fn get_commit(&self, revision: &str) -> Result<Commit>;
@@ -63,7 +63,6 @@ impl Commit {
 /// Real implementation that calls the jj CLI
 pub struct RealJujutsu;
 
-#[async_trait(?Send)]
 impl JujutsuOps for RealJujutsu {
     async fn get_commit(&self, revision: &str) -> Result<Commit> {
         // Get commit_id, change_id, description, and parent change IDs in a single jj command

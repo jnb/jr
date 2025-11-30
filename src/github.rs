@@ -1,7 +1,8 @@
+#![allow(async_fn_in_trait)]
+
 use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result;
-use async_trait::async_trait;
 use tokio::process::Command;
 #[cfg(test)]
 use mockall::automock;
@@ -11,7 +12,6 @@ use mockall::automock;
 
 /// Operations for interacting with GitHub
 #[cfg_attr(test, automock)]
-#[async_trait(?Send)]
 pub trait GithubOps {
     async fn find_branches_with_prefix(&self, prefix: &str) -> Result<Vec<String>>;
 
@@ -55,7 +55,6 @@ impl RealGithub {
     }
 }
 
-#[async_trait(?Send)]
 impl GithubOps for RealGithub {
     async fn find_branches_with_prefix(&self, prefix: &str) -> Result<Vec<String>> {
         let search_prefix = format!("{}{}", self.branch_prefix, prefix);

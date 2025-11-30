@@ -1,7 +1,8 @@
+#![allow(async_fn_in_trait)]
+
 use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result;
-use async_trait::async_trait;
 use tokio::process::Command;
 #[cfg(test)]
 use mockall::automock;
@@ -11,7 +12,6 @@ use mockall::automock;
 
 /// Operations for interacting with Git
 #[cfg_attr(test, automock)]
-#[async_trait(?Send)]
 pub trait GitOps {
     async fn get_tree(&self, commit_id: &str) -> Result<String>;
     async fn get_branch(&self, branch: &str) -> Result<String>;
@@ -36,7 +36,6 @@ pub trait GitOps {
 /// Real implementation that calls the git CLI
 pub struct RealGit;
 
-#[async_trait(?Send)]
 impl GitOps for RealGit {
     async fn get_tree(&self, commit_id: &str) -> Result<String> {
         let output = Command::new("git")
