@@ -73,7 +73,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         let stack_changes = self.jj.get_stack_changes(&commit.commit_id).await?;
 
         // Fetch all branches once
-        let all_branches = self.gh.find_branches_with_prefix("").await?;
+        let all_branches = self.gh.find_branches_with_prefix(&self.config.branch_prefix).await?;
 
         // Collect all branches that exist in the stack (excluding current revision)
         let branches_to_check: Vec<_> = stack_changes

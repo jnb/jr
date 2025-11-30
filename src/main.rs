@@ -1,11 +1,11 @@
 use anyhow::Result;
 use clap::Parser;
 use clap::Subcommand;
+use jr::App;
+use jr::Config;
 use jr::ops::git::RealGit;
 use jr::ops::github::RealGithub;
 use jr::ops::jujutsu::RealJujutsu;
-use jr::App;
-use jr::Config;
 
 #[derive(Parser)]
 #[command(name = "jr")]
@@ -45,12 +45,7 @@ pub enum Commands {
 #[tokio::main]
 async fn main() -> Result<()> {
     let config = Config::load()?;
-    let app = App::new(
-        config.clone(),
-        RealJujutsu,
-        RealGit,
-        RealGithub::new(config.branch_prefix.clone()),
-    );
+    let app = App::new(config, RealJujutsu, RealGit, RealGithub);
 
     let cli = Cli::parse();
 

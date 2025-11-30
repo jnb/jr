@@ -41,7 +41,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         };
 
         // Fetch all branches once
-        let all_branches = self.gh.find_branches_with_prefix("").await?;
+        let all_branches = self.gh.find_branches_with_prefix(&self.config.branch_prefix).await?;
 
         // Collect all unique branches we need pr_diffs for (changes + their parents)
         let mut branches_needing_diffs = std::collections::HashSet::new();

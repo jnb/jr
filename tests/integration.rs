@@ -58,7 +58,11 @@ fn init() {
 #[instrument(skip_all)]
 async fn setup(temp_path: &std::path::Path) -> anyhow::Result<()> {
     utils::create_git_repo(temp_path).await?;
-    utils::setup_git_remote(temp_path, "git@github.com:jnb/test_repo.git").await?;
+    utils::setup_git_remote(
+        temp_path,
+        &format!("git@github.com:{GITHUB_USER}/test_repo.git"),
+    )
+    .await?;
     utils::init_jujutsu(temp_path).await?;
     utils::jj_git_fetch(temp_path).await?;
     utils::track_branch(temp_path, "master", "origin").await?;
@@ -66,12 +70,13 @@ async fn setup(temp_path: &std::path::Path) -> anyhow::Result<()> {
     std::env::set_current_dir(temp_path)?;
 
     // Find all branches and delete them
-    let github = RealGithub::new("jnb/".to_string());
-    let branches = github.find_branches_with_prefix("").await?;
+    let branches = RealGithub
+        .find_branches_with_prefix(GIT_BRANCH_PREFIX)
+        .await?;
     println!("Found {} branches to delete", branches.len());
     for branch in branches {
         println!("Deleting branch: {}", branch);
-        github.delete_branch(&branch).await?;
+        RealGithub.delete_branch(&branch).await?;
     }
 
     // Update git repo again because we deleted remote branches
@@ -118,12 +123,12 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
 
     setup(test_dir.path()).await?;
 
-    let config = jr::Config::new("jnb/".to_string(), 8);
+    let config = jr::Config::new(GIT_BRANCH_PREFIX.to_string(), 8);
     let app = jr::App::new(
-        config.clone(),
+        config,
         jr::ops::jujutsu::RealJujutsu,
         jr::ops::git::RealGit,
-        jr::ops::github::RealGithub::new(config.branch_prefix),
+        jr::ops::github::RealGithub,
     );
 
     let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));

@@ -26,7 +26,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         let pr_branch = format!("{}{}", self.config.branch_prefix, short_change_id);
 
         // Fetch all branches once
-        let all_branches = self.gh.find_branches_with_prefix("").await?;
+        let all_branches = self.gh.find_branches_with_prefix(&self.config.branch_prefix).await?;
         let base_branch = self.find_previous_branch(revision, &all_branches).await?;
 
         writeln!(stdout, "PR branch: {}", pr_branch)?;

@@ -1,11 +1,11 @@
 #![allow(async_fn_in_trait)]
 
-use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result;
-use tokio::process::Command;
+use anyhow::anyhow;
 #[cfg(test)]
 use mockall::automock;
+use tokio::process::Command;
 
 // -----------------------------------------------------------------------------
 // GithubOps trait
@@ -44,24 +44,11 @@ pub trait GithubOps {
 // RealGithub
 
 /// Real implementation that calls the gh CLI
-pub struct RealGithub {
-    /// Global branch prefix used when searching for branches
-    pub branch_prefix: String,
-}
-
-impl RealGithub {
-    pub fn new(branch_prefix: String) -> Self {
-        Self { branch_prefix }
-    }
-}
+pub struct RealGithub;
 
 impl GithubOps for RealGithub {
     async fn find_branches_with_prefix(&self, prefix: &str) -> Result<Vec<String>> {
-        let search_prefix = format!("{}{}", self.branch_prefix, prefix);
-        let api_path = format!(
-            "/repos/:owner/:repo/git/matching-refs/heads/{}",
-            search_prefix
-        );
+        let api_path = format!("/repos/:owner/:repo/git/matching-refs/heads/{}", prefix);
 
         let output = Command::new("gh")
             .args([
