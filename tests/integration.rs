@@ -9,8 +9,8 @@ mod utils;
 
 use std::sync::LazyLock;
 
-use jr::github::GithubOps as _;
-use jr::github::RealGithub;
+use jr::ops::github::GithubOps as _;
+use jr::ops::github::RealGithub;
 use serial_test::serial;
 use tracing::instrument;
 
@@ -119,9 +119,9 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     setup(test_dir.path()).await?;
 
     let app = jr::App::new(
-        jr::jujutsu::RealJujutsu,
-        jr::git::RealGit,
-        jr::github::RealGithub::new("jnb/".to_string()), // FIXME
+        jr::ops::jujutsu::RealJujutsu,
+        jr::ops::git::RealGit,
+        jr::ops::github::RealGithub::new("jnb/".to_string()), // FIXME
     );
 
     let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));

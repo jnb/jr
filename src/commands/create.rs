@@ -3,9 +3,9 @@ use anyhow::Result;
 
 use crate::app::CHANGE_ID_LENGTH;
 use crate::app::GLOBAL_BRANCH_PREFIX;
-use crate::git::GitOps;
-use crate::github::GithubOps;
-use crate::jujutsu::JujutsuOps;
+use crate::ops::git::GitOps;
+use crate::ops::github::GithubOps;
+use crate::ops::jujutsu::JujutsuOps;
 use crate::App;
 
 impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
@@ -100,11 +100,11 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
 #[cfg(test)]
 mod tests {
     use crate::app::tests::helpers::*;
-    use crate::git::MockGitOps;
-    use crate::github::MockGithubOps;
-    use crate::jujutsu::Commit;
-    use crate::jujutsu::CommitMessage;
-    use crate::jujutsu::MockJujutsuOps;
+    use crate::ops::git::MockGitOps;
+    use crate::ops::github::MockGithubOps;
+    use crate::ops::jujutsu::Commit;
+    use crate::ops::jujutsu::CommitMessage;
+    use crate::ops::jujutsu::MockJujutsuOps;
     use crate::App;
 
     #[tokio::test]

@@ -1,12 +1,11 @@
-pub mod git;
-pub mod github;
-pub mod jujutsu;
+pub mod ops;
 
 mod app;
 pub mod commands;
 
-// Re-export App from app module
+// Re-export App and constants from app module
 pub use app::App;
+pub use app::GLOBAL_BRANCH_PREFIX;
 
 // Disable colors for all tests to get clean output
 #[cfg(test)]

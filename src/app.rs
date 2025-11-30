@@ -3,12 +3,12 @@ use std::collections::HashMap;
 use anyhow::Result;
 use colored::Colorize;
 
-use crate::git::GitOps;
-use crate::github::GithubOps;
-use crate::jujutsu::JujutsuOps;
+use crate::ops::git::GitOps;
+use crate::ops::github::GithubOps;
+use crate::ops::jujutsu::JujutsuOps;
 
 /// Prefix used for all branches
-pub(crate) const GLOBAL_BRANCH_PREFIX: &str = "jnb/";
+pub const GLOBAL_BRANCH_PREFIX: &str = "jnb/";
 
 /// Number of characters from the change ID to use in branch names
 pub(crate) const CHANGE_ID_LENGTH: usize = 8;
@@ -30,7 +30,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
     /// Validate that a commit is not already merged to trunk
     pub(crate) async fn validate_not_merged_to_main(
         &self,
-        commit: &crate::jujutsu::Commit,
+        commit: &crate::ops::jujutsu::Commit,
     ) -> Result<()> {
         let trunk_commit = self.jj.get_trunk_commit_id().await?;
 
@@ -297,11 +297,11 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
 #[cfg(test)]
 pub(crate) mod tests {
     pub(crate) mod helpers {
-        use crate::git::MockGitOps;
-        use crate::github::MockGithubOps;
-        use crate::jujutsu::Commit;
-        use crate::jujutsu::CommitMessage;
-        use crate::jujutsu::MockJujutsuOps;
+        use crate::ops::git::MockGitOps;
+        use crate::ops::github::MockGithubOps;
+        use crate::ops::jujutsu::Commit;
+        use crate::ops::jujutsu::CommitMessage;
+        use crate::ops::jujutsu::MockJujutsuOps;
 
         /// Returns a MockJujutsuOps with sensible defaults for a typical commit
         pub fn standard_jj_mock() -> MockJujutsuOps {
@@ -373,11 +373,11 @@ pub(crate) mod tests {
     }
 
     use super::*;
-    use crate::git::MockGitOps;
-    use crate::github::MockGithubOps;
-    use crate::jujutsu::Commit;
-    use crate::jujutsu::CommitMessage;
-    use crate::jujutsu::MockJujutsuOps;
+    use crate::ops::git::MockGitOps;
+    use crate::ops::github::MockGithubOps;
+    use crate::ops::jujutsu::Commit;
+    use crate::ops::jujutsu::CommitMessage;
+    use crate::ops::jujutsu::MockJujutsuOps;
 
     #[tokio::test]
     async fn test_find_previous_branch() {

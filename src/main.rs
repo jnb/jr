@@ -1,9 +1,9 @@
 use anyhow::Result;
 use clap::Parser;
 use clap::Subcommand;
-use jr::git::RealGit;
-use jr::github::RealGithub;
-use jr::jujutsu::RealJujutsu;
+use jr::ops::git::RealGit;
+use jr::ops::github::RealGithub;
+use jr::ops::jujutsu::RealJujutsu;
 use jr::App;
 use jr::GLOBAL_BRANCH_PREFIX;
 
