@@ -3,8 +3,11 @@
 `jr` (Jujutsu Review) is a Rust-based CLI tool for translating Jujutsu commits
 onto stacked GitHub PRs.
 
-It's inspired by the Phabraciator Arcanist (`arc`) CLI tool, but tailored
-towards Jujutsu and GitHub.
+This tool is inspired by:
+
+- Phabraciator Arcanist (`arc`) CLI tool
+- [Super Pull Requests](https://github.com/spacedentist/spr); we use a similar
+  `init`flow.
 
 ## Installation
 
@@ -23,14 +26,14 @@ export PATH="$HOME/.cargo/bin:$PATH"
 
 ## Quickstart
 
-TODO
+Run `jr init` in the root of a git-backed Jujutsu repository.
 
 ## Design principles
 
 ### History is preserved
 
 Preserving history is the raison d'être for this tool.  If we instead force-push
-our changes, using `jj git push`, then the GitHub review experience really
+our changes, using e.g. `jj git push`, then the GitHub review experience really
 degrades:
 
 - There's no way for reviewers to only see changes since their last review.
@@ -59,3 +62,10 @@ In more detail:
 ### One Jujutsu commit per PR
 
 This is what I use.
+
+### jr is self-contained
+
+Original I shelled-out to the `gh` CLI tool.  But this is just another
+dependency.  So instead we directly make calls against the GitHub API.  The
+tradeoff is that this requires the user to setup GitHub API keys; we guide them
+through this process as part of the `jr init` flow.
