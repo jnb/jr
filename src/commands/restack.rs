@@ -1,8 +1,6 @@
 use anyhow::Context;
 use anyhow::Result;
 
-use crate::app::CHANGE_ID_LENGTH;
-use crate::app::GLOBAL_BRANCH_PREFIX;
 use crate::ops::git::GitOps;
 use crate::ops::github::GithubOps;
 use crate::ops::jujutsu::JujutsuOps;
@@ -24,8 +22,8 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         self.check_parent_prs_up_to_date(revision).await?;
 
         // PR branch names: current and base
-        let short_change_id = &commit.change_id[..CHANGE_ID_LENGTH.min(commit.change_id.len())];
-        let pr_branch = format!("{}{}", GLOBAL_BRANCH_PREFIX, short_change_id);
+        let short_change_id = &commit.change_id[..self.config.change_id_length.min(commit.change_id.len())];
+        let pr_branch = format!("{}{}", self.config.branch_prefix, short_change_id);
 
         // Fetch all branches once
         let all_branches = self.gh.find_branches_with_prefix("").await?;
@@ -131,6 +129,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
 
 #[cfg(test)]
 mod tests {
+    use crate::config::Config;
     use crate::ops::git::MockGitOps;
     use crate::ops::github::MockGithubOps;
     use crate::ops::jujutsu::Commit;
@@ -166,7 +165,7 @@ mod tests {
             .expect_get_branch()
             .returning(|branch| match branch {
                 "master" => Ok("main_commit".to_string()),
-                "jnb/abc12345" => Ok("remote_commit".to_string()),
+                "test/abc12345" => Ok("remote_commit".to_string()),
                 _ => Err(anyhow::anyhow!("Branch not found")),
             });
         mock_git
@@ -180,7 +179,7 @@ mod tests {
         let mut mock_gh = MockGithubOps::new();
         mock_gh
             .expect_find_branches_with_prefix()
-            .returning(|_| Ok(vec!["jnb/abc12345".to_string()]));
+            .returning(|_| Ok(vec!["test/abc12345".to_string()]));
         mock_gh
             .expect_pr_diff()
             .returning(|_| Ok("diff --git a/src/main.rs b/src/main.rs\nindex 123..456\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1,1 +1,2 @@\n fn main() {}\n+// comment".to_string()));
@@ -189,7 +188,7 @@ mod tests {
             .expect_pr_edit()
             .returning(|_, _| Ok("https://github.com/test/repo/pull/123".to_string()));
 
-        let app = App::new(mock_jj, mock_git, mock_gh);
+        let app = App::new(Config::default_for_tests(), mock_jj, mock_git, mock_gh);
 
         // Restack should succeed when diffs match
         let mut stdout = Vec::new();
@@ -228,7 +227,7 @@ mod tests {
             .expect_get_branch()
             .returning(|branch| match branch {
                 "master" => Ok("main_commit".to_string()),
-                "jnb/abc12345" => Ok("remote_commit".to_string()),
+                "test/abc12345" => Ok("remote_commit".to_string()),
                 _ => Err(anyhow::anyhow!("Branch not found")),
             });
         mock_git
@@ -247,12 +246,12 @@ mod tests {
         let mut mock_gh = MockGithubOps::new();
         mock_gh
             .expect_find_branches_with_prefix()
-            .returning(|_| Ok(vec!["jnb/abc12345".to_string()]));
+            .returning(|_| Ok(vec!["test/abc12345".to_string()]));
         mock_gh
             .expect_pr_diff()
             .returning(|_| Ok("diff --git a/src/main.rs b/src/main.rs\nindex 123..456\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1,1 +1,2 @@\n fn main() {}\n+// comment".to_string()));
 
-        let app = App::new(mock_jj, mock_git, mock_gh);
+        let app = App::new(Config::default_for_tests(), mock_jj, mock_git, mock_gh);
 
         // Restack should error when commit has local changes
         let mut stdout = Vec::new();

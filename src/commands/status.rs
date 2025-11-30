@@ -3,8 +3,6 @@ use std::collections::HashMap;
 use anyhow::Result;
 use futures::future::join_all;
 
-use crate::app::CHANGE_ID_LENGTH;
-use crate::app::GLOBAL_BRANCH_PREFIX;
 use crate::ops::git::GitOps;
 use crate::ops::github::GithubOps;
 use crate::ops::jujutsu::JujutsuOps;
@@ -48,8 +46,8 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         // Collect all unique branches we need pr_diffs for (changes + their parents)
         let mut branches_needing_diffs = std::collections::HashSet::new();
         for (change_id, _commit_id) in &changes {
-            let short_change_id = &change_id[..CHANGE_ID_LENGTH.min(change_id.len())];
-            let expected_branch = format!("{}{}", GLOBAL_BRANCH_PREFIX, short_change_id);
+            let short_change_id = &change_id[..self.config.change_id_length.min(change_id.len())];
+            let expected_branch = format!("{}{}", self.config.branch_prefix, short_change_id);
             if all_branches.contains(&expected_branch) {
                 branches_needing_diffs.insert(expected_branch);
             }
@@ -58,8 +56,8 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
             if let Ok(commit) = self.jj.get_commit(change_id).await {
                 for parent_change_id in commit.parent_change_ids {
                     let short_parent_id =
-                        &parent_change_id[..CHANGE_ID_LENGTH.min(parent_change_id.len())];
-                    let parent_branch = format!("{}{}", GLOBAL_BRANCH_PREFIX, short_parent_id);
+                        &parent_change_id[..self.config.change_id_length.min(parent_change_id.len())];
+                    let parent_branch = format!("{}{}", self.config.branch_prefix, short_parent_id);
                     if all_branches.contains(&parent_branch) {
                         branches_needing_diffs.insert(parent_branch);
                     }
@@ -85,8 +83,8 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         let pr_url_futures: Vec<_> = changes
             .iter()
             .map(|(change_id, _commit_id)| {
-                let short_change_id = &change_id[..CHANGE_ID_LENGTH.min(change_id.len())];
-                let expected_branch = format!("{}{}", GLOBAL_BRANCH_PREFIX, short_change_id);
+                let short_change_id = &change_id[..self.config.change_id_length.min(change_id.len())];
+                let expected_branch = format!("{}{}", self.config.branch_prefix, short_change_id);
                 let branch_exists = all_branches.contains(&expected_branch);
 
                 async move {
@@ -111,8 +109,8 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
 
         // Display results
         for (i, (change_id, commit_id)) in changes.iter().enumerate() {
-            let short_change_id = &change_id[..CHANGE_ID_LENGTH.min(change_id.len())];
-            let expected_branch = format!("{}{}", GLOBAL_BRANCH_PREFIX, short_change_id);
+            let short_change_id = &change_id[..self.config.change_id_length.min(change_id.len())];
+            let expected_branch = format!("{}{}", self.config.branch_prefix, short_change_id);
             let pr_url_result = &pr_urls[i];
             let base_branch_result = &base_branches[i];
 
@@ -154,6 +152,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
 #[cfg(test)]
 mod tests {
     use crate::app::tests::helpers::*;
+    use crate::config::Config;
     use crate::ops::git::MockGitOps;
     use crate::ops::github::MockGithubOps;
     use crate::ops::jujutsu::Commit;
@@ -179,7 +178,7 @@ mod tests {
 
         let mut mock_git = MockGitOps::new();
         mock_git.expect_get_branch().returning(|branch| {
-            if branch == "jnb/abc12345" {
+            if branch == "test/abc12345" {
                 Ok("remote_commit".to_string())
             } else {
                 Err(anyhow::anyhow!("Branch not found"))
@@ -193,7 +192,7 @@ mod tests {
         let mut mock_gh = MockGithubOps::new();
         mock_gh
             .expect_find_branches_with_prefix()
-            .returning(|_| Ok(vec!["jnb/abc12345".to_string()]));
+            .returning(|_| Ok(vec!["test/abc12345".to_string()]));
         mock_gh
             .expect_pr_url()
             .returning(|_| Ok(Some("https://github.com/test/repo/pull/123".to_string())));
@@ -201,7 +200,7 @@ mod tests {
             .expect_pr_diff()
             .returning(|_| Ok("M\tsrc/main.rs".to_string()));
 
-        let app = App::new(mock_jj, mock_git, mock_gh);
+        let app = App::new(Config::default_for_tests(), mock_jj, mock_git, mock_gh);
 
         let mut stdout = Vec::new();
         let mut stderr = Vec::new();
@@ -232,7 +231,7 @@ mod tests {
 
         let mut mock_git = MockGitOps::new();
         mock_git.expect_get_branch().returning(|branch| {
-            if branch == "jnb/abc12345" {
+            if branch == "test/abc12345" {
                 Ok("remote_commit".to_string())
             } else {
                 Err(anyhow::anyhow!("Branch not found"))
@@ -250,7 +249,7 @@ mod tests {
         let mut mock_gh = MockGithubOps::new();
         mock_gh
             .expect_find_branches_with_prefix()
-            .returning(|_| Ok(vec!["jnb/abc12345".to_string()]));
+            .returning(|_| Ok(vec!["test/abc12345".to_string()]));
         mock_gh
             .expect_pr_url()
             .returning(|_| Ok(Some("https://github.com/test/repo/pull/123".to_string())));
@@ -258,7 +257,7 @@ mod tests {
             .expect_pr_diff()
             .returning(|_| Ok("M\tsrc/main.rs".to_string()));
 
-        let app = App::new(mock_jj, mock_git, mock_gh);
+        let app = App::new(Config::default_for_tests(), mock_jj, mock_git, mock_gh);
 
         let mut stdout = Vec::new();
         let mut stderr = Vec::new();
@@ -271,10 +270,10 @@ mod tests {
         let mut mock_gh = MockGithubOps::new();
         mock_gh
             .expect_find_branches_with_prefix()
-            .returning(|_| Ok(vec!["jnb/other123".to_string()]));
+            .returning(|_| Ok(vec!["test/other123".to_string()]));
         mock_gh.expect_pr_url().returning(|_| Ok(None));
 
-        let app = App::new(standard_jj_mock(), MockGitOps::new(), mock_gh);
+        let app = App::new(Config::default_for_tests(), standard_jj_mock(), MockGitOps::new(), mock_gh);
 
         let mut stdout = Vec::new();
         let mut stderr = Vec::new();
@@ -287,11 +286,11 @@ mod tests {
         let mut mock_gh = MockGithubOps::new();
         mock_gh
             .expect_find_branches_with_prefix()
-            .returning(|_| Ok(vec!["jnb/abc12345".to_string()]));
+            .returning(|_| Ok(vec!["test/abc12345".to_string()]));
         mock_gh.expect_pr_url().returning(|_| Ok(None));
         mock_gh.expect_pr_diff().returning(|_| Ok("".to_string()));
 
-        let app = App::new(standard_jj_mock(), MockGitOps::new(), mock_gh);
+        let app = App::new(Config::default_for_tests(), standard_jj_mock(), MockGitOps::new(), mock_gh);
 
         let mut stdout = Vec::new();
         let mut stderr = Vec::new();

@@ -5,7 +5,7 @@ use jr::ops::git::RealGit;
 use jr::ops::github::RealGithub;
 use jr::ops::jujutsu::RealJujutsu;
 use jr::App;
-use jr::GLOBAL_BRANCH_PREFIX;
+use jr::Config;
 
 #[derive(Parser)]
 #[command(name = "jr")]
@@ -44,10 +44,12 @@ pub enum Commands {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let config = Config::load()?;
     let app = App::new(
+        config.clone(),
         RealJujutsu,
         RealGit,
-        RealGithub::new(GLOBAL_BRANCH_PREFIX.to_string()),
+        RealGithub::new(config.branch_prefix.clone()),
     );
 
     let cli = Cli::parse();

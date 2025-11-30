@@ -3,25 +3,21 @@ use std::collections::HashMap;
 use anyhow::Result;
 use colored::Colorize;
 
+use crate::config::Config;
 use crate::ops::git::GitOps;
 use crate::ops::github::GithubOps;
 use crate::ops::jujutsu::JujutsuOps;
 
-/// Prefix used for all branches
-pub const GLOBAL_BRANCH_PREFIX: &str = "jnb/";
-
-/// Number of characters from the change ID to use in branch names
-pub(crate) const CHANGE_ID_LENGTH: usize = 8;
-
 pub struct App<J: JujutsuOps, G: GitOps, H: GithubOps> {
+    pub config: Config,
     pub jj: J,
     pub git: G,
     pub gh: H,
 }
 
 impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
-    pub fn new(jj: J, git: G, gh: H) -> Self {
-        Self { jj, git, gh }
+    pub fn new(config: Config, jj: J, git: G, gh: H) -> Self {
+        Self { config, jj, git, gh }
     }
 }
 
@@ -56,8 +52,8 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
 
         // For each parent, check if a PR branch exists
         for parent_change_id in parent_change_ids {
-            let short_parent_id = &parent_change_id[..CHANGE_ID_LENGTH.min(parent_change_id.len())];
-            let parent_branch = format!("{}{}", GLOBAL_BRANCH_PREFIX, short_parent_id);
+            let short_parent_id = &parent_change_id[..self.config.change_id_length.min(parent_change_id.len())];
+            let parent_branch = format!("{}{}", self.config.branch_prefix, short_parent_id);
 
             // Check if this PR branch exists
             if all_branches.contains(&parent_branch) {
@@ -84,8 +80,8 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
             .iter()
             .filter(|(_, commit_id_in_stack)| commit_id_in_stack != &commit.commit_id)
             .filter_map(|(change_id, _commit_id_in_stack)| {
-                let short_change_id = &change_id[..CHANGE_ID_LENGTH.min(change_id.len())];
-                let expected_branch = format!("{}{}", GLOBAL_BRANCH_PREFIX, short_change_id);
+                let short_change_id = &change_id[..self.config.change_id_length.min(change_id.len())];
+                let expected_branch = format!("{}{}", self.config.branch_prefix, short_change_id);
                 if all_branches.contains(&expected_branch) {
                     Some((
                         change_id.clone(),
@@ -147,8 +143,8 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
 
         // For each parent, check if it has a PR and if it's outdated
         for parent_change_id in parent_change_ids {
-            let short_parent_id = &parent_change_id[..CHANGE_ID_LENGTH.min(parent_change_id.len())];
-            let parent_branch = format!("{}{}", GLOBAL_BRANCH_PREFIX, short_parent_id);
+            let short_parent_id = &parent_change_id[..self.config.change_id_length.min(parent_change_id.len())];
+            let parent_branch = format!("{}{}", self.config.branch_prefix, short_parent_id);
 
             // If this parent has a PR branch, check if it's outdated
             if all_branches.contains(&parent_branch) {
@@ -394,12 +390,12 @@ pub(crate) mod tests {
             })
         });
 
-        let app = App::new(mock_jj, MockGitOps::new(), MockGithubOps::new());
+        let app = App::new(Config::default_for_tests(), mock_jj, MockGitOps::new(), MockGithubOps::new());
 
-        let all_branches = vec!["jnb/abc12345".to_string()];
+        let all_branches = vec!["test/abc12345".to_string()];
         let result = app.find_previous_branch("@", &all_branches).await;
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "jnb/abc12345");
+        assert_eq!(result.unwrap(), "test/abc12345");
     }
 
     #[tokio::test]
@@ -417,9 +413,9 @@ pub(crate) mod tests {
             })
         });
 
-        let app = App::new(mock_jj, MockGitOps::new(), MockGithubOps::new());
+        let app = App::new(Config::default_for_tests(), mock_jj, MockGitOps::new(), MockGithubOps::new());
 
-        let all_branches = vec!["jnb/abc12345".to_string()];
+        let all_branches = vec!["test/abc12345".to_string()];
         let result = app.find_previous_branch("@", &all_branches).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "master");

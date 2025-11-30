@@ -1,8 +1,6 @@
 use anyhow::Context;
 use anyhow::Result;
 
-use crate::app::CHANGE_ID_LENGTH;
-use crate::app::GLOBAL_BRANCH_PREFIX;
 use crate::ops::git::GitOps;
 use crate::ops::github::GithubOps;
 use crate::ops::jujutsu::JujutsuOps;
@@ -25,8 +23,8 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         self.check_parent_prs_up_to_date(revision).await?;
 
         // PR branch names: current and base
-        let short_change_id = &commit.change_id[..CHANGE_ID_LENGTH.min(commit.change_id.len())];
-        let pr_branch = format!("{}{}", GLOBAL_BRANCH_PREFIX, short_change_id);
+        let short_change_id = &commit.change_id[..self.config.change_id_length.min(commit.change_id.len())];
+        let pr_branch = format!("{}{}", self.config.branch_prefix, short_change_id);
 
         // Fetch all branches once
         let all_branches = self.gh.find_branches_with_prefix("").await?;
@@ -127,6 +125,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
 #[cfg(test)]
 mod tests {
     use crate::app::tests::helpers::*;
+    use crate::config::Config;
     use crate::ops::git::MockGitOps;
     use crate::ops::github::MockGithubOps;
     use crate::ops::jujutsu::Commit;
@@ -141,7 +140,7 @@ mod tests {
             .expect_get_branch()
             .returning(|branch| match branch {
                 "master" => Ok("main_commit".to_string()),
-                "jnb/abc12345" => Ok("existing_commit".to_string()),
+                "test/abc12345" => Ok("existing_commit".to_string()),
                 _ => Err(anyhow::anyhow!("Branch not found")),
             });
         mock_git
@@ -154,10 +153,10 @@ mod tests {
         let mut mock_gh = standard_gh_mock();
         mock_gh
             .expect_pr_edit()
-            .withf(|pr_branch, base_branch| pr_branch == "jnb/abc12345" && base_branch == "master")
+            .withf(|pr_branch, base_branch| pr_branch == "test/abc12345" && base_branch == "master")
             .returning(|_, _| Ok("https://github.com/test/repo/pull/123".to_string()));
 
-        let app = App::new(standard_jj_mock(), mock_git, mock_gh);
+        let app = App::new(Config::default_for_tests(), standard_jj_mock(), mock_git, mock_gh);
 
         let mut stdout = Vec::new();
         let result = app.cmd_update("@", "Update from review", &mut stdout).await;
@@ -171,7 +170,7 @@ mod tests {
             .expect_get_branch()
             .returning(|branch| match branch {
                 "master" => Ok("main_commit".to_string()),
-                "jnb/abc12345" => Ok("existing_commit".to_string()),
+                "test/abc12345" => Ok("existing_commit".to_string()),
                 _ => Err(anyhow::anyhow!("Branch not found")),
             });
         mock_git.expect_get_tree().returning(|commit_id| {
@@ -194,7 +193,7 @@ mod tests {
             .returning(|_| Ok(vec![]));
         mock_gh.expect_pr_is_open().returning(|_| Ok(false));
 
-        let app = App::new(standard_jj_mock(), mock_git, mock_gh);
+        let app = App::new(Config::default_for_tests(), standard_jj_mock(), mock_git, mock_gh);
 
         let mut stdout = Vec::new();
         let result = app
@@ -264,18 +263,18 @@ mod tests {
         let mut mock_gh = MockGithubOps::new();
         mock_gh
             .expect_find_branches_with_prefix()
-            .returning(|_| Ok(vec!["jnb/bbb12345".to_string(), "jnb/ccc12345".to_string()]));
+            .returning(|_| Ok(vec!["test/bbb12345".to_string(), "test/ccc12345".to_string()]));
         mock_gh
             .expect_pr_diff()
             .returning(|branch| {
-                if branch == "jnb/bbb12345" {
+                if branch == "test/bbb12345" {
                     Ok("diff --git a/src/file.rs b/src/file.rs\n--- a/src/file.rs\n+++ b/src/file.rs\n@@ -1,1 +1,2 @@\n content\n+old line".to_string())
                 } else {
                     Ok("diff --git a/src/other.rs b/src/other.rs\n--- a/src/other.rs\n+++ b/src/other.rs\n@@ -1,1 +1,2 @@\n content\n+change".to_string())
                 }
             });
 
-        let app = App::new(mock_jj, mock_git, mock_gh);
+        let app = App::new(Config::default_for_tests(), mock_jj, mock_git, mock_gh);
 
         let mut stdout = Vec::new();
         let result = app.cmd_update("@", "Update commit C", &mut stdout).await;
@@ -283,6 +282,6 @@ mod tests {
         let error_msg = result.unwrap_err().to_string();
         assert!(error_msg.contains("parent PR"));
         assert!(error_msg.contains("out of date"));
-        assert!(error_msg.contains("jnb/bbb12345"));
+        assert!(error_msg.contains("test/bbb12345"));
     }
 }

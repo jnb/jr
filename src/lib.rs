@@ -2,10 +2,11 @@ pub mod ops;
 
 mod app;
 pub mod commands;
+pub mod config;
 
-// Re-export App and constants from app module
+// Re-export App and Config from modules
 pub use app::App;
-pub use app::GLOBAL_BRANCH_PREFIX;
+pub use config::Config;
 
 // Disable colors for all tests to get clean output
 #[cfg(test)]

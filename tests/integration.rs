@@ -118,10 +118,12 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
 
     setup(test_dir.path()).await?;
 
+    let config = jr::Config::new("jnb/".to_string(), 8);
     let app = jr::App::new(
+        config.clone(),
         jr::ops::jujutsu::RealJujutsu,
         jr::ops::git::RealGit,
-        jr::ops::github::RealGithub::new("jnb/".to_string()), // FIXME
+        jr::ops::github::RealGithub::new(config.branch_prefix),
     );
 
     let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));

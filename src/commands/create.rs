@@ -1,8 +1,6 @@
 use anyhow::Context;
 use anyhow::Result;
 
-use crate::app::CHANGE_ID_LENGTH;
-use crate::app::GLOBAL_BRANCH_PREFIX;
 use crate::ops::git::GitOps;
 use crate::ops::github::GithubOps;
 use crate::ops::jujutsu::JujutsuOps;
@@ -29,8 +27,8 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         self.validate_not_merged_to_main(&commit).await?;
 
         // PR branch names: current and base
-        let short_change_id = &commit.change_id[..CHANGE_ID_LENGTH.min(commit.change_id.len())];
-        let pr_branch = format!("{}{}", GLOBAL_BRANCH_PREFIX, short_change_id);
+        let short_change_id = &commit.change_id[..self.config.change_id_length.min(commit.change_id.len())];
+        let pr_branch = format!("{}{}", self.config.branch_prefix, short_change_id);
 
         // Fetch all branches once
         let all_branches = self.gh.find_branches_with_prefix("").await?;
@@ -100,6 +98,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
 #[cfg(test)]
 mod tests {
     use crate::app::tests::helpers::*;
+    use crate::config::Config;
     use crate::ops::git::MockGitOps;
     use crate::ops::github::MockGithubOps;
     use crate::ops::jujutsu::Commit;
@@ -113,11 +112,11 @@ mod tests {
         mock_gh
             .expect_pr_create()
             .withf(|pr_branch, base_branch, _title, _body| {
-                pr_branch == "jnb/abc12345" && base_branch == "master"
+                pr_branch == "test/abc12345" && base_branch == "master"
             })
             .returning(|_, _, _, _| Ok("https://github.com/test/repo/pull/123".to_string()));
 
-        let app = App::new(standard_jj_mock(), standard_git_mock(), mock_gh);
+        let app = App::new(Config::default_for_tests(), standard_jj_mock(), standard_git_mock(), mock_gh);
 
         let mut stdout = Vec::new();
         let result = app.cmd_create("@", &mut stdout).await;
@@ -126,7 +125,7 @@ mod tests {
         // Verify output
         let output = String::from_utf8(stdout).unwrap();
         assert!(output.contains("Change ID: abc12345"));
-        assert!(output.contains("PR branch: jnb/abc12345"));
+        assert!(output.contains("PR branch: test/abc12345"));
         assert!(output.contains("Base branch: master"));
     }
 
@@ -152,7 +151,7 @@ mod tests {
             .withf(|commit, descendant| commit == "old_commit" && descendant == "trunk123")
             .returning(|_, _| Ok(true));
 
-        let app = App::new(mock_jj, MockGitOps::new(), MockGithubOps::new());
+        let app = App::new(Config::default_for_tests(), mock_jj, MockGitOps::new(), MockGithubOps::new());
 
         let mut stdout = Vec::new();
         let result = app.cmd_create("@", &mut stdout).await;
@@ -165,7 +164,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_cmd_create_accepts_non_ancestor() {
-        let app = App::new(standard_jj_mock(), standard_git_mock(), standard_gh_mock());
+        let app = App::new(Config::default_for_tests(), standard_jj_mock(), standard_git_mock(), standard_gh_mock());
 
         let mut stdout = Vec::new();
         let result = app.cmd_create("@", &mut stdout).await;
@@ -182,11 +181,11 @@ mod tests {
             .expect_get_branch()
             .returning(|branch| match branch {
                 "master" => Ok("main_commit".to_string()),
-                "jnb/abc12345" => Ok("existing_commit".to_string()),
+                "test/abc12345" => Ok("existing_commit".to_string()),
                 _ => Err(anyhow::anyhow!("Branch not found")),
             });
 
-        let app = App::new(standard_jj_mock(), mock_git, standard_gh_mock());
+        let app = App::new(Config::default_for_tests(), standard_jj_mock(), mock_git, standard_gh_mock());
 
         let mut stdout = Vec::new();
         let result = app.cmd_create("@", &mut stdout).await;
@@ -208,11 +207,11 @@ mod tests {
             .expect_get_branch()
             .returning(|branch| match branch {
                 "master" => Ok("main_commit".to_string()),
-                "jnb/abc12345" => Ok("existing_commit".to_string()),
+                "test/abc12345" => Ok("existing_commit".to_string()),
                 _ => Err(anyhow::anyhow!("Branch not found")),
             });
 
-        let app = App::new(standard_jj_mock(), mock_git, standard_gh_mock());
+        let app = App::new(Config::default_for_tests(), standard_jj_mock(), mock_git, standard_gh_mock());
 
         let mut stdout = Vec::new();
         let result = app.cmd_create("@", &mut stdout).await;
@@ -238,7 +237,7 @@ mod tests {
             })
         });
 
-        let app = App::new(mock_jj, MockGitOps::new(), MockGithubOps::new());
+        let app = App::new(Config::default_for_tests(), mock_jj, MockGitOps::new(), MockGithubOps::new());
 
         let mut stdout = Vec::new();
         let result = app.cmd_create("@", &mut stdout).await;
