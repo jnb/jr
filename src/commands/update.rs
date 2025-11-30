@@ -1,11 +1,11 @@
 use anyhow::Context;
 use anyhow::Result;
 
+use crate::App;
 use crate::app::CHANGE_ID_LENGTH;
 use crate::ops::git::GitOps;
 use crate::ops::github::GithubOps;
 use crate::ops::jujutsu::JujutsuOps;
-use crate::App;
 
 impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
     pub async fn cmd_update(
@@ -28,7 +28,10 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         let pr_branch = format!("{}{}", self.config.branch_prefix, short_change_id);
 
         // Fetch all branches once
-        let all_branches = self.gh.find_branches_with_prefix(&self.config.branch_prefix).await?;
+        let all_branches = self
+            .gh
+            .find_branches_with_prefix(&self.config.branch_prefix)
+            .await?;
         let base_branch = self.find_previous_branch(revision, &all_branches).await?;
 
         writeln!(stdout, "PR branch: {}", pr_branch)?;
@@ -73,16 +76,22 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
             old_pr_tip.clone()
         } else if base_has_changed {
             // Create merge commit with old PR tip and base as parents
-            let commit = self.git.commit_tree_merge(
-                &tree,
-                vec![old_pr_tip.clone(), base_tip.clone()],
-                commit_message,
-            ).await?;
+            let commit = self
+                .git
+                .commit_tree_merge(
+                    &tree,
+                    vec![old_pr_tip.clone(), base_tip.clone()],
+                    commit_message,
+                )
+                .await?;
             writeln!(stdout, "Created new merge commit: {}", commit)?;
             commit
         } else {
             // Tree changed but base hasn't - create regular commit with single parent
-            let commit = self.git.commit_tree(&tree, &old_pr_tip, commit_message).await?;
+            let commit = self
+                .git
+                .commit_tree(&tree, &old_pr_tip, commit_message)
+                .await?;
             writeln!(stdout, "Created new commit: {}", commit)?;
             commit
         };
@@ -125,6 +134,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
 
 #[cfg(test)]
 mod tests {
+    use crate::App;
     use crate::app::tests::helpers::*;
     use crate::config::Config;
     use crate::ops::git::MockGitOps;
@@ -132,7 +142,6 @@ mod tests {
     use crate::ops::jujutsu::Commit;
     use crate::ops::jujutsu::CommitMessage;
     use crate::ops::jujutsu::MockJujutsuOps;
-    use crate::App;
 
     #[tokio::test]
     async fn test_cmd_update_updates_existing_pr() {
@@ -157,7 +166,12 @@ mod tests {
             .withf(|pr_branch, base_branch| pr_branch == "test/abc12345" && base_branch == "master")
             .returning(|_, _| Ok("https://github.com/test/repo/pull/123".to_string()));
 
-        let app = App::new(Config::default_for_tests(), standard_jj_mock(), mock_git, mock_gh);
+        let app = App::new(
+            Config::default_for_tests(),
+            standard_jj_mock(),
+            mock_git,
+            mock_gh,
+        );
 
         let mut stdout = Vec::new();
         let result = app.cmd_update("@", "Update from review", &mut stdout).await;
@@ -194,7 +208,12 @@ mod tests {
             .returning(|_| Ok(vec![]));
         mock_gh.expect_pr_is_open().returning(|_| Ok(false));
 
-        let app = App::new(Config::default_for_tests(), standard_jj_mock(), mock_git, mock_gh);
+        let app = App::new(
+            Config::default_for_tests(),
+            standard_jj_mock(),
+            mock_git,
+            mock_gh,
+        );
 
         let mut stdout = Vec::new();
         let result = app
@@ -262,9 +281,12 @@ mod tests {
             });
 
         let mut mock_gh = MockGithubOps::new();
-        mock_gh
-            .expect_find_branches_with_prefix()
-            .returning(|_| Ok(vec!["test/bbb12345".to_string(), "test/ccc12345".to_string()]));
+        mock_gh.expect_find_branches_with_prefix().returning(|_| {
+            Ok(vec![
+                "test/bbb12345".to_string(),
+                "test/ccc12345".to_string(),
+            ])
+        });
         mock_gh
             .expect_pr_diff()
             .returning(|branch| {

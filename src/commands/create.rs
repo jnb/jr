@@ -1,11 +1,11 @@
 use anyhow::Context;
 use anyhow::Result;
 
+use crate::App;
 use crate::app::CHANGE_ID_LENGTH;
 use crate::ops::git::GitOps;
 use crate::ops::github::GithubOps;
 use crate::ops::jujutsu::JujutsuOps;
-use crate::App;
 
 impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
     pub async fn cmd_create(&self, revision: &str, stdout: &mut impl std::io::Write) -> Result<()> {
@@ -32,7 +32,10 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         let pr_branch = format!("{}{}", self.config.branch_prefix, short_change_id);
 
         // Fetch all branches once
-        let all_branches = self.gh.find_branches_with_prefix(&self.config.branch_prefix).await?;
+        let all_branches = self
+            .gh
+            .find_branches_with_prefix(&self.config.branch_prefix)
+            .await?;
         let base_branch = self.find_previous_branch(revision, &all_branches).await?;
 
         writeln!(stdout, "PR branch: {}", pr_branch)?;
@@ -98,6 +101,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
 
 #[cfg(test)]
 mod tests {
+    use crate::App;
     use crate::app::tests::helpers::*;
     use crate::config::Config;
     use crate::ops::git::MockGitOps;
@@ -105,7 +109,6 @@ mod tests {
     use crate::ops::jujutsu::Commit;
     use crate::ops::jujutsu::CommitMessage;
     use crate::ops::jujutsu::MockJujutsuOps;
-    use crate::App;
 
     #[tokio::test]
     async fn test_cmd_create_creates_new_pr() {
@@ -117,7 +120,12 @@ mod tests {
             })
             .returning(|_, _, _, _| Ok("https://github.com/test/repo/pull/123".to_string()));
 
-        let app = App::new(Config::default_for_tests(), standard_jj_mock(), standard_git_mock(), mock_gh);
+        let app = App::new(
+            Config::default_for_tests(),
+            standard_jj_mock(),
+            standard_git_mock(),
+            mock_gh,
+        );
 
         let mut stdout = Vec::new();
         let result = app.cmd_create("@", &mut stdout).await;
@@ -152,20 +160,32 @@ mod tests {
             .withf(|commit, descendant| commit == "old_commit" && descendant == "trunk123")
             .returning(|_, _| Ok(true));
 
-        let app = App::new(Config::default_for_tests(), mock_jj, MockGitOps::new(), MockGithubOps::new());
+        let app = App::new(
+            Config::default_for_tests(),
+            mock_jj,
+            MockGitOps::new(),
+            MockGithubOps::new(),
+        );
 
         let mut stdout = Vec::new();
         let result = app.cmd_create("@", &mut stdout).await;
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("ancestor of trunk"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("ancestor of trunk")
+        );
     }
 
     #[tokio::test]
     async fn test_cmd_create_accepts_non_ancestor() {
-        let app = App::new(Config::default_for_tests(), standard_jj_mock(), standard_git_mock(), standard_gh_mock());
+        let app = App::new(
+            Config::default_for_tests(),
+            standard_jj_mock(),
+            standard_git_mock(),
+            standard_gh_mock(),
+        );
 
         let mut stdout = Vec::new();
         let result = app.cmd_create("@", &mut stdout).await;
@@ -186,7 +206,12 @@ mod tests {
                 _ => Err(anyhow::anyhow!("Branch not found")),
             });
 
-        let app = App::new(Config::default_for_tests(), standard_jj_mock(), mock_git, standard_gh_mock());
+        let app = App::new(
+            Config::default_for_tests(),
+            standard_jj_mock(),
+            mock_git,
+            standard_gh_mock(),
+        );
 
         let mut stdout = Vec::new();
         let result = app.cmd_create("@", &mut stdout).await;
@@ -212,15 +237,22 @@ mod tests {
                 _ => Err(anyhow::anyhow!("Branch not found")),
             });
 
-        let app = App::new(Config::default_for_tests(), standard_jj_mock(), mock_git, standard_gh_mock());
+        let app = App::new(
+            Config::default_for_tests(),
+            standard_jj_mock(),
+            mock_git,
+            standard_gh_mock(),
+        );
 
         let mut stdout = Vec::new();
         let result = app.cmd_create("@", &mut stdout).await;
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("different content"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("different content")
+        );
     }
 
     #[tokio::test]
@@ -238,14 +270,21 @@ mod tests {
             })
         });
 
-        let app = App::new(Config::default_for_tests(), mock_jj, MockGitOps::new(), MockGithubOps::new());
+        let app = App::new(
+            Config::default_for_tests(),
+            mock_jj,
+            MockGitOps::new(),
+            MockGithubOps::new(),
+        );
 
         let mut stdout = Vec::new();
         let result = app.cmd_create("@", &mut stdout).await;
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("empty description"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("empty description")
+        );
     }
 }

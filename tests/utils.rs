@@ -3,10 +3,10 @@ use std::process::Stdio;
 
 use tokio::process::Command;
 use tracing::level_filters::LevelFilter;
+use tracing_subscriber::Layer as _;
 use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
-use tracing_subscriber::Layer as _;
 
 /// Creates a git repository in the given directory.
 ///

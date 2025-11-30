@@ -17,6 +17,8 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
+    /// Initialize configuration file in the current repository
+    Init,
     /// Create a new PR (uses jj commit message)
     Create {
         /// Revision to use (defaults to @)
@@ -44,12 +46,23 @@ pub enum Commands {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let cli = Cli::parse();
+
+    // Handle Init command specially - it creates the config
+    if matches!(cli.command, Some(Commands::Init)) {
+        // For init, we don't need to load config first
+        let temp_config = Config::default_for_tests(); // Placeholder, not used
+        let app = App::new(temp_config, RealJujutsu, RealGit, RealGithub);
+        app.cmd_init(&mut std::io::stdout()).await?;
+        return Ok(());
+    }
+
+    // For all other commands, load config first
     let config = Config::load()?;
     let app = App::new(config, RealJujutsu, RealGit, RealGithub);
 
-    let cli = Cli::parse();
-
     match cli.command {
+        Some(Commands::Init) => unreachable!(), // Already handled above
         Some(Commands::Create { revision }) => {
             app.cmd_create(&revision, &mut std::io::stdout()).await?
         }

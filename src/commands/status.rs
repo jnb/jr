@@ -3,11 +3,11 @@ use std::collections::HashMap;
 use anyhow::Result;
 use futures_util::future::join_all;
 
+use crate::App;
 use crate::app::CHANGE_ID_LENGTH;
 use crate::ops::git::GitOps;
 use crate::ops::github::GithubOps;
 use crate::ops::jujutsu::JujutsuOps;
-use crate::App;
 
 impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
     pub async fn cmd_status(
@@ -42,7 +42,10 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         };
 
         // Fetch all branches once
-        let all_branches = self.gh.find_branches_with_prefix(&self.config.branch_prefix).await?;
+        let all_branches = self
+            .gh
+            .find_branches_with_prefix(&self.config.branch_prefix)
+            .await?;
 
         // Collect all unique branches we need pr_diffs for (changes + their parents)
         let mut branches_needing_diffs = std::collections::HashSet::new();
@@ -123,8 +126,9 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
             let abbreviated_change_id = &change_id[..4.min(change_id.len())];
 
             // Check if parent PR is outdated
-            let parent_pr_outdated =
-                self.is_parent_pr_outdated(change_id, &all_branches, &pr_diffs).await?;
+            let parent_pr_outdated = self
+                .is_parent_pr_outdated(change_id, &all_branches, &pr_diffs)
+                .await?;
 
             // Get base branch (or default to empty string if error)
             let base_branch = base_branch_result.as_ref().ok();
@@ -152,6 +156,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
 
 #[cfg(test)]
 mod tests {
+    use crate::App;
     use crate::app::tests::helpers::*;
     use crate::config::Config;
     use crate::ops::git::MockGitOps;
@@ -159,7 +164,6 @@ mod tests {
     use crate::ops::jujutsu::Commit;
     use crate::ops::jujutsu::CommitMessage;
     use crate::ops::jujutsu::MockJujutsuOps;
-    use crate::App;
 
     #[tokio::test]
     async fn test_cmd_status_branch_exists_up_to_date() {
@@ -274,7 +278,12 @@ mod tests {
             .returning(|_| Ok(vec!["test/other123".to_string()]));
         mock_gh.expect_pr_url().returning(|_| Ok(None));
 
-        let app = App::new(Config::default_for_tests(), standard_jj_mock(), MockGitOps::new(), mock_gh);
+        let app = App::new(
+            Config::default_for_tests(),
+            standard_jj_mock(),
+            MockGitOps::new(),
+            mock_gh,
+        );
 
         let mut stdout = Vec::new();
         let mut stderr = Vec::new();
@@ -291,7 +300,12 @@ mod tests {
         mock_gh.expect_pr_url().returning(|_| Ok(None));
         mock_gh.expect_pr_diff().returning(|_| Ok("".to_string()));
 
-        let app = App::new(Config::default_for_tests(), standard_jj_mock(), MockGitOps::new(), mock_gh);
+        let app = App::new(
+            Config::default_for_tests(),
+            standard_jj_mock(),
+            MockGitOps::new(),
+            mock_gh,
+        );
 
         let mut stdout = Vec::new();
         let mut stderr = Vec::new();

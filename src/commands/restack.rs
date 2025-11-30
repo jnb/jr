@@ -1,11 +1,11 @@
 use anyhow::Context;
 use anyhow::Result;
 
+use crate::App;
 use crate::app::CHANGE_ID_LENGTH;
 use crate::ops::git::GitOps;
 use crate::ops::github::GithubOps;
 use crate::ops::jujutsu::JujutsuOps;
-use crate::App;
 
 impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
     pub async fn cmd_restack(
@@ -27,7 +27,10 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         let pr_branch = format!("{}{}", self.config.branch_prefix, short_change_id);
 
         // Fetch all branches once
-        let all_branches = self.gh.find_branches_with_prefix(&self.config.branch_prefix).await?;
+        let all_branches = self
+            .gh
+            .find_branches_with_prefix(&self.config.branch_prefix)
+            .await?;
         let base_branch = self.find_previous_branch(revision, &all_branches).await?;
 
         writeln!(stdout, "PR branch: {}", pr_branch)?;
@@ -83,11 +86,14 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
             old_pr_tip.clone()
         } else {
             // Create merge commit with old PR tip and base as parents
-            let commit = self.git.commit_tree_merge(
-                &tree,
-                vec![old_pr_tip.clone(), base_tip.clone()],
-                commit_message,
-            ).await?;
+            let commit = self
+                .git
+                .commit_tree_merge(
+                    &tree,
+                    vec![old_pr_tip.clone(), base_tip.clone()],
+                    commit_message,
+                )
+                .await?;
             writeln!(stdout, "Created new merge commit: {}", commit)?;
             commit
         };
@@ -130,13 +136,13 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
 
 #[cfg(test)]
 mod tests {
+    use crate::App;
     use crate::config::Config;
     use crate::ops::git::MockGitOps;
     use crate::ops::github::MockGithubOps;
     use crate::ops::jujutsu::Commit;
     use crate::ops::jujutsu::CommitMessage;
     use crate::ops::jujutsu::MockJujutsuOps;
-    use crate::App;
 
     #[tokio::test]
     async fn test_cmd_restack_works_when_diffs_match() {

@@ -12,6 +12,7 @@ warnings:
 
 ```bash
 cargo check
+cargo test --lib
 cargo clippy
 cargo fmt
 ```

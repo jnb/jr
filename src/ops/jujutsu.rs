@@ -1,11 +1,11 @@
 #![allow(async_fn_in_trait)]
 
-use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result;
-use tokio::process::Command;
+use anyhow::anyhow;
 #[cfg(test)]
 use mockall::automock;
+use tokio::process::Command;
 
 // -----------------------------------------------------------------------------
 // Types

@@ -1,11 +1,11 @@
 #![allow(async_fn_in_trait)]
 
-use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result;
-use tokio::process::Command;
+use anyhow::anyhow;
 #[cfg(test)]
 use mockall::automock;
+use tokio::process::Command;
 
 // -----------------------------------------------------------------------------
 // GitOps trait
@@ -16,7 +16,12 @@ pub trait GitOps {
     async fn get_tree(&self, commit_id: &str) -> Result<String>;
     async fn get_branch(&self, branch: &str) -> Result<String>;
     async fn commit_tree(&self, tree: &str, parent: &str, message: &str) -> Result<String>;
-    async fn commit_tree_merge(&self, tree: &str, parents: Vec<String>, message: &str) -> Result<String>;
+    async fn commit_tree_merge(
+        &self,
+        tree: &str,
+        parents: Vec<String>,
+        message: &str,
+    ) -> Result<String>;
     async fn update_branch(&self, branch: &str, commit: &str) -> Result<()>;
     async fn push_branch(&self, branch: &str) -> Result<()>;
 
@@ -88,7 +93,12 @@ impl GitOps for RealGit {
         Ok(String::from_utf8(output.stdout)?.trim().to_string())
     }
 
-    async fn commit_tree_merge(&self, tree: &str, parents: Vec<String>, message: &str) -> Result<String> {
+    async fn commit_tree_merge(
+        &self,
+        tree: &str,
+        parents: Vec<String>,
+        message: &str,
+    ) -> Result<String> {
         let mut args = vec!["commit-tree".to_string(), tree.to_string()];
         for parent in &parents {
             args.push("-p".to_string());

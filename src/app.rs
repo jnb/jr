@@ -20,7 +20,12 @@ pub struct App<J: JujutsuOps, G: GitOps, H: GithubOps> {
 
 impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
     pub fn new(config: Config, jj: J, git: G, gh: H) -> Self {
-        Self { config, jj, git, gh }
+        Self {
+            config,
+            jj,
+            git,
+            gh,
+        }
     }
 }
 
@@ -33,7 +38,11 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
     ) -> Result<()> {
         let trunk_commit = self.jj.get_trunk_commit_id().await?;
 
-        if self.jj.is_ancestor(&commit.commit_id, &trunk_commit).await? {
+        if self
+            .jj
+            .is_ancestor(&commit.commit_id, &trunk_commit)
+            .await?
+        {
             return Err(anyhow::anyhow!(
                 "Cannot create PR: commit {} is an ancestor of trunk. This commit is already merged.",
                 commit.commit_id
@@ -76,7 +85,10 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         let stack_changes = self.jj.get_stack_changes(&commit.commit_id).await?;
 
         // Fetch all branches once
-        let all_branches = self.gh.find_branches_with_prefix(&self.config.branch_prefix).await?;
+        let all_branches = self
+            .gh
+            .find_branches_with_prefix(&self.config.branch_prefix)
+            .await?;
 
         // Collect all branches that exist in the stack (excluding current revision)
         let branches_to_check: Vec<_> = stack_changes
@@ -162,8 +174,9 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
                 }
 
                 // Check if parent's base has moved
-                if let Ok(parent_base_branch) =
-                    self.find_previous_branch(&parent_change_id, all_branches).await
+                if let Ok(parent_base_branch) = self
+                    .find_previous_branch(&parent_change_id, all_branches)
+                    .await
                 {
                     if let Ok(parent_pr_commit) = self.git.get_branch(&parent_branch).await {
                         if let Ok(base_tip) = self.git.get_branch(&parent_base_branch).await {
@@ -220,10 +233,12 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
                                 // Check if base branch has moved (not an ancestor of PR branch)
                                 let base_has_moved = if let Some(base_branch) = _base_branch {
                                     // Get PR branch tip
-                                    if let Ok(pr_branch_tip) = self.git.get_branch(expected_branch).await
+                                    if let Ok(pr_branch_tip) =
+                                        self.git.get_branch(expected_branch).await
                                     {
                                         // Get base branch tip
-                                        if let Ok(base_tip) = self.git.get_branch(base_branch).await {
+                                        if let Ok(base_tip) = self.git.get_branch(base_branch).await
+                                        {
                                             // If base is not an ancestor of PR, base has moved
                                             !self
                                                 .git
@@ -393,7 +408,12 @@ pub(crate) mod tests {
             })
         });
 
-        let app = App::new(Config::default_for_tests(), mock_jj, MockGitOps::new(), MockGithubOps::new());
+        let app = App::new(
+            Config::default_for_tests(),
+            mock_jj,
+            MockGitOps::new(),
+            MockGithubOps::new(),
+        );
 
         let all_branches = vec!["test/abc12345".to_string()];
         let result = app.find_previous_branch("@", &all_branches).await;
@@ -416,7 +436,12 @@ pub(crate) mod tests {
             })
         });
 
-        let app = App::new(Config::default_for_tests(), mock_jj, MockGitOps::new(), MockGithubOps::new());
+        let app = App::new(
+            Config::default_for_tests(),
+            mock_jj,
+            MockGitOps::new(),
+            MockGithubOps::new(),
+        );
 
         let all_branches = vec!["test/abc12345".to_string()];
         let result = app.find_previous_branch("@", &all_branches).await;
