@@ -177,9 +177,11 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
             old_pr_tip.clone()
         } else if base_has_changed {
             // Create merge commit with old PR tip and base as parents
-            let commit =
-                self.git
-                    .commit_tree_merge(&tree, vec![old_pr_tip.clone(), base_tip.clone()], &commit_message)?;
+            let commit = self.git.commit_tree_merge(
+                &tree,
+                vec![old_pr_tip.clone(), base_tip.clone()],
+                &commit_message,
+            )?;
             writeln!(stdout, "Created new merge commit: {}", commit)?;
             commit
         } else {
@@ -297,9 +299,11 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
             old_pr_tip.clone()
         } else {
             // Create merge commit with old PR tip and base as parents
-            let commit =
-                self.git
-                    .commit_tree_merge(&tree, vec![old_pr_tip.clone(), base_tip.clone()], commit_message)?;
+            let commit = self.git.commit_tree_merge(
+                &tree,
+                vec![old_pr_tip.clone(), base_tip.clone()],
+                commit_message,
+            )?;
             writeln!(stdout, "Created new merge commit: {}", commit)?;
             commit
         };
@@ -734,15 +738,16 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
     }
 }
 
-// =============================================================================
-// Tests with mock implementations
-// =============================================================================
+// -----------------------------------------------------------------------------
+// Tests
 
 #[cfg(test)]
 mod tests {
     use git::MockGitOps;
     use github::MockGithubOps;
-    use jujutsu::{Commit, CommitMessage, MockJujutsuOps};
+    use jujutsu::Commit;
+    use jujutsu::CommitMessage;
+    use jujutsu::MockJujutsuOps;
 
     use super::*;
 
@@ -754,50 +759,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_cmd_create_creates_new_pr() {
-        let mut mock_jj = MockJujutsuOps::new();
-        mock_jj
-            .expect_get_commit()
-            .returning(|_| {
-                Ok(Commit {
-                    change_id: "abc12345".to_string(),
-                    commit_id: "def45678".to_string(),
-                    message: CommitMessage {
-                        title: Some("Test commit message".to_string()),
-                        body: None,
-                    },
-                    parent_change_ids: vec![],
-                })
-            });
-        mock_jj
-            .expect_get_trunk_commit_id()
-            .returning(|| Ok("trunk123".to_string()));
-        mock_jj
-            .expect_is_ancestor()
-            .returning(|_, _| Ok(false));
+        use helpers::*;
 
-        let mut mock_git = MockGitOps::new();
-        mock_git
-            .expect_get_tree()
-            .returning(|_| Ok("tree123".to_string()));
-        mock_git
-            .expect_get_branch()
-            .returning(|branch| {
-                if branch == "master" {
-                    Ok("base_commit".to_string())
-                } else {
-                    Err(anyhow::anyhow!("Branch not found"))
-                }
-            });
-        mock_git
-            .expect_commit_tree()
-            .returning(|_, _, _| Ok("new_commit".to_string()));
-        mock_git.expect_update_branch().returning(|_, _| Ok(()));
-        mock_git.expect_push_branch().returning(|_| Ok(()));
-
-        let mut mock_gh = MockGithubOps::new();
-        mock_gh
-            .expect_find_branches_with_prefix()
-            .returning(|_| Ok(vec![]));
+        let mut mock_gh = standard_gh_mock();
         mock_gh
             .expect_pr_create()
             .withf(|pr_branch, base_branch, _title, _body| {
@@ -805,7 +769,7 @@ mod tests {
             })
             .returning(|_, _, _, _| Ok("https://github.com/test/repo/pull/123".to_string()));
 
-        let app = App::new(mock_jj, mock_git, mock_gh);
+        let app = App::new(standard_jj_mock(), standard_git_mock(), mock_gh);
 
         let mut stdout = Vec::new();
         let result = app.cmd_create("@", &mut stdout).await;
@@ -820,66 +784,30 @@ mod tests {
 
     #[tokio::test]
     async fn test_cmd_update_updates_existing_pr() {
-        let mut mock_jj = MockJujutsuOps::new();
-        mock_jj
-            .expect_get_commit()
-            .returning(|_| {
-                Ok(Commit {
-                    change_id: "abc12345".to_string(),
-                    commit_id: "def45678".to_string(),
-                    message: CommitMessage {
-                        title: Some("Test commit message".to_string()),
-                        body: None,
-                    },
-                    parent_change_ids: vec![],
-                })
-            });
-        mock_jj
-            .expect_get_trunk_commit_id()
-            .returning(|| Ok("trunk123".to_string()));
-        mock_jj
-            .expect_is_ancestor()
-            .returning(|_, _| Ok(false));
-        mock_jj
-            .expect_get_stack_changes()
-            .returning(|_| Ok(vec![]));
+        use helpers::*;
 
         let mut mock_git = MockGitOps::new();
         mock_git
             .expect_get_branch()
-            .returning(|branch| {
-                match branch {
-                    "master" => Ok("main_commit".to_string()),
-                    "jnb/abc12345" => Ok("existing_commit".to_string()),
-                    _ => Err(anyhow::anyhow!("Branch not found")),
-                }
+            .returning(|branch| match branch {
+                "master" => Ok("main_commit".to_string()),
+                "jnb/abc12345" => Ok("existing_commit".to_string()),
+                _ => Err(anyhow::anyhow!("Branch not found")),
             });
         mock_git
             .expect_get_tree()
             .returning(|_| Ok("tree123".to_string()));
-        mock_git
-            .expect_is_ancestor()
-            .returning(|_, _| Ok(true));
-        mock_git
-            .expect_update_branch()
-            .returning(|_, _| Ok(()));
+        mock_git.expect_is_ancestor().returning(|_, _| Ok(true));
+        mock_git.expect_update_branch().returning(|_, _| Ok(()));
         mock_git.expect_push_branch().returning(|_| Ok(()));
 
-        let mut mock_gh = MockGithubOps::new();
-        mock_gh
-            .expect_find_branches_with_prefix()
-            .returning(|_| Ok(vec![]));
-        mock_gh
-            .expect_pr_is_open()
-            .returning(|_| Ok(true));
+        let mut mock_gh = standard_gh_mock();
         mock_gh
             .expect_pr_edit()
-            .withf(|pr_branch, base_branch| {
-                pr_branch == "jnb/abc12345" && base_branch == "master"
-            })
+            .withf(|pr_branch, base_branch| pr_branch == "jnb/abc12345" && base_branch == "master")
             .returning(|_, _| Ok("https://github.com/test/repo/pull/123".to_string()));
 
-        let app = App::new(mock_jj, mock_git, mock_gh);
+        let app = App::new(standard_jj_mock(), mock_git, mock_gh);
 
         let mut stdout = Vec::new();
         let result = app.cmd_update("@", "Update from review", &mut stdout).await;
@@ -889,24 +817,19 @@ mod tests {
     #[test]
     fn test_find_previous_branch() {
         let mut mock_jj = MockJujutsuOps::new();
-        mock_jj
-            .expect_get_commit()
-            .returning(|_| {
-                Ok(Commit {
-                    change_id: "abc12345".to_string(),
-                    commit_id: "def45678".to_string(),
-                    message: CommitMessage {
-                        title: Some("Test commit message".to_string()),
-                        body: None,
-                    },
-                    parent_change_ids: vec!["abc1234567890".to_string()],
-                })
-            });
+        mock_jj.expect_get_commit().returning(|_| {
+            Ok(Commit {
+                change_id: "abc12345".to_string(),
+                commit_id: "def45678".to_string(),
+                message: CommitMessage {
+                    title: Some("Test commit message".to_string()),
+                    body: None,
+                },
+                parent_change_ids: vec!["abc1234567890".to_string()],
+            })
+        });
 
-        let mock_git = MockGitOps::new();
-        let mock_gh = MockGithubOps::new();
-
-        let app = App::new(mock_jj, mock_git, mock_gh);
+        let app = App::new(mock_jj, MockGitOps::new(), MockGithubOps::new());
 
         let all_branches = vec!["jnb/abc12345".to_string()];
         let result = app.find_previous_branch("@", &all_branches);
@@ -917,24 +840,19 @@ mod tests {
     #[test]
     fn test_find_previous_branch_defaults_to_master() {
         let mut mock_jj = MockJujutsuOps::new();
-        mock_jj
-            .expect_get_commit()
-            .returning(|_| {
-                Ok(Commit {
-                    change_id: "xyz78901".to_string(),
-                    commit_id: "def45678".to_string(),
-                    message: CommitMessage {
-                        title: Some("Test commit message".to_string()),
-                        body: None,
-                    },
-                    parent_change_ids: vec!["nonexistent123".to_string()],
-                })
-            });
+        mock_jj.expect_get_commit().returning(|_| {
+            Ok(Commit {
+                change_id: "xyz78901".to_string(),
+                commit_id: "def45678".to_string(),
+                message: CommitMessage {
+                    title: Some("Test commit message".to_string()),
+                    body: None,
+                },
+                parent_change_ids: vec!["nonexistent123".to_string()],
+            })
+        });
 
-        let mock_git = MockGitOps::new();
-        let mock_gh = MockGithubOps::new();
-
-        let app = App::new(mock_jj, mock_git, mock_gh);
+        let app = App::new(mock_jj, MockGitOps::new(), MockGithubOps::new());
 
         let all_branches = vec!["jnb/abc12345".to_string()];
         let result = app.find_previous_branch("@", &all_branches);
@@ -945,39 +863,31 @@ mod tests {
     #[tokio::test]
     async fn test_cmd_status_branch_exists_up_to_date() {
         let mut mock_jj = MockJujutsuOps::new();
-        mock_jj
-            .expect_get_commit()
-            .returning(|_| {
-                Ok(Commit {
-                    change_id: "abc12345".to_string(),
-                    commit_id: "local_commit".to_string(),
-                    message: CommitMessage {
-                        title: Some("Test commit message".to_string()),
-                        body: None,
-                    },
-                    parent_change_ids: vec![],
-                })
-            });
-        mock_jj
-            .expect_get_stack_heads()
-            .returning(|| Ok(vec![]));
+        mock_jj.expect_get_commit().returning(|_| {
+            Ok(Commit {
+                change_id: "abc12345".to_string(),
+                commit_id: "local_commit".to_string(),
+                message: CommitMessage {
+                    title: Some("Test commit message".to_string()),
+                    body: None,
+                },
+                parent_change_ids: vec![],
+            })
+        });
+        mock_jj.expect_get_stack_heads().returning(|| Ok(vec![]));
 
         let mut mock_git = MockGitOps::new();
-        mock_git
-            .expect_get_branch()
-            .returning(|branch| {
-                if branch == "jnb/abc12345" {
-                    Ok("remote_commit".to_string())
-                } else {
-                    Err(anyhow::anyhow!("Branch not found"))
-                }
-            });
+        mock_git.expect_get_branch().returning(|branch| {
+            if branch == "jnb/abc12345" {
+                Ok("remote_commit".to_string())
+            } else {
+                Err(anyhow::anyhow!("Branch not found"))
+            }
+        });
         mock_git
             .expect_get_commit_diff()
             .returning(|_| Ok("M\tsrc/main.rs".to_string()));
-        mock_git
-            .expect_is_ancestor()
-            .returning(|_, _| Ok(true));
+        mock_git.expect_is_ancestor().returning(|_, _| Ok(true));
 
         let mut mock_gh = MockGithubOps::new();
         mock_gh
@@ -1006,45 +916,35 @@ mod tests {
     #[tokio::test]
     async fn test_cmd_status_branch_exists_out_of_sync() {
         let mut mock_jj = MockJujutsuOps::new();
-        mock_jj
-            .expect_get_commit()
-            .returning(|_| {
-                Ok(Commit {
-                    change_id: "abc12345".to_string(),
-                    commit_id: "local_commit".to_string(),
-                    message: CommitMessage {
-                        title: Some("Test commit message".to_string()),
-                        body: None,
-                    },
-                    parent_change_ids: vec![],
-                })
-            });
-        mock_jj
-            .expect_get_stack_heads()
-            .returning(|| Ok(vec![]));
+        mock_jj.expect_get_commit().returning(|_| {
+            Ok(Commit {
+                change_id: "abc12345".to_string(),
+                commit_id: "local_commit".to_string(),
+                message: CommitMessage {
+                    title: Some("Test commit message".to_string()),
+                    body: None,
+                },
+                parent_change_ids: vec![],
+            })
+        });
+        mock_jj.expect_get_stack_heads().returning(|| Ok(vec![]));
 
         let mut mock_git = MockGitOps::new();
-        mock_git
-            .expect_get_branch()
-            .returning(|branch| {
-                if branch == "jnb/abc12345" {
-                    Ok("remote_commit".to_string())
-                } else {
-                    Err(anyhow::anyhow!("Branch not found"))
-                }
-            });
-        mock_git
-            .expect_get_commit_diff()
-            .returning(|commit_id| {
-                if commit_id == "local_commit" {
-                    Ok("M\tsrc/main.rs\nA\tsrc/new.rs".to_string())
-                } else {
-                    Ok("M\tsrc/main.rs".to_string())
-                }
-            });
-        mock_git
-            .expect_is_ancestor()
-            .returning(|_, _| Ok(true));
+        mock_git.expect_get_branch().returning(|branch| {
+            if branch == "jnb/abc12345" {
+                Ok("remote_commit".to_string())
+            } else {
+                Err(anyhow::anyhow!("Branch not found"))
+            }
+        });
+        mock_git.expect_get_commit_diff().returning(|commit_id| {
+            if commit_id == "local_commit" {
+                Ok("M\tsrc/main.rs\nA\tsrc/new.rs".to_string())
+            } else {
+                Ok("M\tsrc/main.rs".to_string())
+            }
+        });
+        mock_git.expect_is_ancestor().returning(|_, _| Ok(true));
 
         let mut mock_gh = MockGithubOps::new();
         mock_gh
@@ -1067,35 +967,15 @@ mod tests {
 
     #[tokio::test]
     async fn test_cmd_status_branch_does_not_exist() {
-        let mut mock_jj = MockJujutsuOps::new();
-        mock_jj
-            .expect_get_commit()
-            .returning(|_| {
-                Ok(Commit {
-                    change_id: "abc12345".to_string(),
-                    commit_id: "def45678".to_string(),
-                    message: CommitMessage {
-                        title: Some("Test commit message".to_string()),
-                        body: None,
-                    },
-                    parent_change_ids: vec![],
-                })
-            });
-        mock_jj
-            .expect_get_stack_heads()
-            .returning(|| Ok(vec![]));
-
-        let mock_git = MockGitOps::new();
+        use helpers::*;
 
         let mut mock_gh = MockGithubOps::new();
         mock_gh
             .expect_find_branches_with_prefix()
             .returning(|_| Ok(vec!["jnb/other123".to_string()]));
-        mock_gh
-            .expect_pr_url()
-            .returning(|_| Ok(None));
+        mock_gh.expect_pr_url().returning(|_| Ok(None));
 
-        let app = App::new(mock_jj, mock_git, mock_gh);
+        let app = App::new(standard_jj_mock(), MockGitOps::new(), mock_gh);
 
         let mut stdout = Vec::new();
         let mut stderr = Vec::new();
@@ -1105,38 +985,16 @@ mod tests {
 
     #[tokio::test]
     async fn test_cmd_status_branch_exists_no_pr() {
-        let mut mock_jj = MockJujutsuOps::new();
-        mock_jj
-            .expect_get_commit()
-            .returning(|_| {
-                Ok(Commit {
-                    change_id: "abc12345".to_string(),
-                    commit_id: "local_commit".to_string(),
-                    message: CommitMessage {
-                        title: Some("Test commit message".to_string()),
-                        body: None,
-                    },
-                    parent_change_ids: vec![],
-                })
-            });
-        mock_jj
-            .expect_get_stack_heads()
-            .returning(|| Ok(vec![]));
-
-        let mock_git = MockGitOps::new();
+        use helpers::*;
 
         let mut mock_gh = MockGithubOps::new();
         mock_gh
             .expect_find_branches_with_prefix()
             .returning(|_| Ok(vec!["jnb/abc12345".to_string()]));
-        mock_gh
-            .expect_pr_url()
-            .returning(|_| Ok(None));
-        mock_gh
-            .expect_pr_diff()
-            .returning(|_| Ok("".to_string()));
+        mock_gh.expect_pr_url().returning(|_| Ok(None));
+        mock_gh.expect_pr_diff().returning(|_| Ok("".to_string()));
 
-        let app = App::new(mock_jj, mock_git, mock_gh);
+        let app = App::new(standard_jj_mock(), MockGitOps::new(), mock_gh);
 
         let mut stdout = Vec::new();
         let mut stderr = Vec::new();
@@ -1147,19 +1005,17 @@ mod tests {
     #[tokio::test]
     async fn test_cmd_create_rejects_ancestor_of_main() {
         let mut mock_jj = MockJujutsuOps::new();
-        mock_jj
-            .expect_get_commit()
-            .returning(|_| {
-                Ok(Commit {
-                    change_id: "abc12345".to_string(),
-                    commit_id: "old_commit".to_string(),
-                    message: CommitMessage {
-                        title: Some("Test commit message".to_string()),
-                        body: None,
-                    },
-                    parent_change_ids: vec![],
-                })
-            });
+        mock_jj.expect_get_commit().returning(|_| {
+            Ok(Commit {
+                change_id: "abc12345".to_string(),
+                commit_id: "old_commit".to_string(),
+                message: CommitMessage {
+                    title: Some("Test commit message".to_string()),
+                    body: None,
+                },
+                parent_change_ids: vec![],
+            })
+        });
         mock_jj
             .expect_get_trunk_commit_id()
             .returning(|| Ok("trunk123".to_string()));
@@ -1168,10 +1024,7 @@ mod tests {
             .withf(|commit, descendant| commit == "old_commit" && descendant == "trunk123")
             .returning(|_, _| Ok(true));
 
-        let mock_git = MockGitOps::new();
-        let mock_gh = MockGithubOps::new();
-
-        let app = App::new(mock_jj, mock_git, mock_gh);
+        let app = App::new(mock_jj, MockGitOps::new(), MockGithubOps::new());
 
         let mut stdout = Vec::new();
         let result = app.cmd_create("@", &mut stdout).await;
@@ -1184,59 +1037,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_cmd_create_accepts_non_ancestor() {
-        let mut mock_jj = MockJujutsuOps::new();
-        mock_jj
-            .expect_get_commit()
-            .returning(|_| {
-                Ok(Commit {
-                    change_id: "abc12345".to_string(),
-                    commit_id: "new_commit".to_string(),
-                    message: CommitMessage {
-                        title: Some("Test commit message".to_string()),
-                        body: None,
-                    },
-                    parent_change_ids: vec![],
-                })
-            });
-        mock_jj
-            .expect_get_trunk_commit_id()
-            .returning(|| Ok("trunk123".to_string()));
-        mock_jj
-            .expect_is_ancestor()
-            .returning(|_, _| Ok(false));
+        use helpers::*;
 
-        let mut mock_git = MockGitOps::new();
-        mock_git
-            .expect_get_tree()
-            .returning(|_| Ok("tree123".to_string()));
-        mock_git
-            .expect_get_branch()
-            .returning(|branch| {
-                if branch == "master" {
-                    Ok("main_commit".to_string())
-                } else {
-                    Err(anyhow::anyhow!("Branch not found"))
-                }
-            });
-        mock_git
-            .expect_commit_tree()
-            .returning(|_, _, _| Ok("new_commit_obj".to_string()));
-        mock_git
-            .expect_update_branch()
-            .returning(|_, _| Ok(()));
-        mock_git
-            .expect_push_branch()
-            .returning(|_| Ok(()));
-
-        let mut mock_gh = MockGithubOps::new();
-        mock_gh
-            .expect_find_branches_with_prefix()
-            .returning(|_| Ok(vec![]));
-        mock_gh
-            .expect_pr_create()
-            .returning(|_, _, _, _| Ok("https://github.com/test/repo/pull/123".to_string()));
-
-        let app = App::new(mock_jj, mock_git, mock_gh);
+        let app = App::new(standard_jj_mock(), standard_git_mock(), standard_gh_mock());
 
         let mut stdout = Vec::new();
         let result = app.cmd_create("@", &mut stdout).await;
@@ -1245,71 +1048,37 @@ mod tests {
 
     #[tokio::test]
     async fn test_cmd_update_errors_when_pr_is_closed() {
-        let mut mock_jj = MockJujutsuOps::new();
-        mock_jj
-            .expect_get_commit()
-            .returning(|_| {
-                Ok(Commit {
-                    change_id: "abc12345".to_string(),
-                    commit_id: "def45678".to_string(),
-                    message: CommitMessage {
-                        title: Some("Test commit message".to_string()),
-                        body: None,
-                    },
-                    parent_change_ids: vec![],
-                })
-            });
-        mock_jj
-            .expect_get_trunk_commit_id()
-            .returning(|| Ok("trunk123".to_string()));
-        mock_jj
-            .expect_is_ancestor()
-            .returning(|_, _| Ok(false));
-        mock_jj
-            .expect_get_stack_changes()
-            .returning(|_| Ok(vec![]));
+        use helpers::*;
 
         let mut mock_git = MockGitOps::new();
         mock_git
             .expect_get_branch()
-            .returning(|branch| {
-                match branch {
-                    "master" => Ok("main_commit".to_string()),
-                    "jnb/abc12345" => Ok("existing_commit".to_string()),
-                    _ => Err(anyhow::anyhow!("Branch not found")),
-                }
+            .returning(|branch| match branch {
+                "master" => Ok("main_commit".to_string()),
+                "jnb/abc12345" => Ok("existing_commit".to_string()),
+                _ => Err(anyhow::anyhow!("Branch not found")),
             });
-        mock_git
-            .expect_get_tree()
-            .returning(|commit_id| {
-                if commit_id == "def45678" {
-                    Ok("new_tree".to_string())
-                } else {
-                    Ok("old_tree".to_string())
-                }
-            });
-        mock_git
-            .expect_is_ancestor()
-            .returning(|_, _| Ok(true));
+        mock_git.expect_get_tree().returning(|commit_id| {
+            if commit_id == "def45678" {
+                Ok("new_tree".to_string())
+            } else {
+                Ok("old_tree".to_string())
+            }
+        });
+        mock_git.expect_is_ancestor().returning(|_, _| Ok(true));
         mock_git
             .expect_commit_tree()
             .returning(|_, _, _| Ok("new_commit_obj".to_string()));
-        mock_git
-            .expect_update_branch()
-            .returning(|_, _| Ok(()));
-        mock_git
-            .expect_push_branch()
-            .returning(|_| Ok(()));
+        mock_git.expect_update_branch().returning(|_, _| Ok(()));
+        mock_git.expect_push_branch().returning(|_| Ok(()));
 
         let mut mock_gh = MockGithubOps::new();
         mock_gh
             .expect_find_branches_with_prefix()
             .returning(|_| Ok(vec![]));
-        mock_gh
-            .expect_pr_is_open()
-            .returning(|_| Ok(false));
+        mock_gh.expect_pr_is_open().returning(|_| Ok(false));
 
-        let app = App::new(mock_jj, mock_git, mock_gh);
+        let app = App::new(standard_jj_mock(), mock_git, mock_gh);
 
         let mut stdout = Vec::new();
         let result = app
@@ -1321,26 +1090,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_cmd_create_errors_when_branch_exists_and_up_to_date() {
-        let mut mock_jj = MockJujutsuOps::new();
-        mock_jj
-            .expect_get_commit()
-            .returning(|_| {
-                Ok(Commit {
-                    change_id: "abc12345".to_string(),
-                    commit_id: "def45678".to_string(),
-                    message: CommitMessage {
-                        title: Some("Test commit message".to_string()),
-                        body: None,
-                    },
-                    parent_change_ids: vec![],
-                })
-            });
-        mock_jj
-            .expect_get_trunk_commit_id()
-            .returning(|| Ok("trunk123".to_string()));
-        mock_jj
-            .expect_is_ancestor()
-            .returning(|_, _| Ok(false));
+        use helpers::*;
 
         let mut mock_git = MockGitOps::new();
         mock_git
@@ -1348,20 +1098,13 @@ mod tests {
             .returning(|_| Ok("same_tree".to_string()));
         mock_git
             .expect_get_branch()
-            .returning(|branch| {
-                match branch {
-                    "master" => Ok("main_commit".to_string()),
-                    "jnb/abc12345" => Ok("existing_commit".to_string()),
-                    _ => Err(anyhow::anyhow!("Branch not found")),
-                }
+            .returning(|branch| match branch {
+                "master" => Ok("main_commit".to_string()),
+                "jnb/abc12345" => Ok("existing_commit".to_string()),
+                _ => Err(anyhow::anyhow!("Branch not found")),
             });
 
-        let mut mock_gh = MockGithubOps::new();
-        mock_gh
-            .expect_find_branches_with_prefix()
-            .returning(|_| Ok(vec![]));
-
-        let app = App::new(mock_jj, mock_git, mock_gh);
+        let app = App::new(standard_jj_mock(), mock_git, standard_gh_mock());
 
         let mut stdout = Vec::new();
         let result = app.cmd_create("@", &mut stdout).await;
@@ -1371,53 +1114,25 @@ mod tests {
 
     #[tokio::test]
     async fn test_cmd_create_errors_when_branch_exists_with_different_content() {
-        let mut mock_jj = MockJujutsuOps::new();
-        mock_jj
-            .expect_get_commit()
-            .returning(|_| {
-                Ok(Commit {
-                    change_id: "abc12345".to_string(),
-                    commit_id: "def45678".to_string(),
-                    message: CommitMessage {
-                        title: Some("Test commit message".to_string()),
-                        body: None,
-                    },
-                    parent_change_ids: vec![],
-                })
-            });
-        mock_jj
-            .expect_get_trunk_commit_id()
-            .returning(|| Ok("trunk123".to_string()));
-        mock_jj
-            .expect_is_ancestor()
-            .returning(|_, _| Ok(false));
+        use helpers::*;
 
         let mut mock_git = MockGitOps::new();
-        mock_git
-            .expect_get_tree()
-            .returning(|commit| {
-                if commit == "def45678" {
-                    Ok("new_tree".to_string())
-                } else {
-                    Ok("old_tree".to_string())
-                }
-            });
+        mock_git.expect_get_tree().returning(|commit| {
+            if commit == "def45678" {
+                Ok("new_tree".to_string())
+            } else {
+                Ok("old_tree".to_string())
+            }
+        });
         mock_git
             .expect_get_branch()
-            .returning(|branch| {
-                match branch {
-                    "master" => Ok("main_commit".to_string()),
-                    "jnb/abc12345" => Ok("existing_commit".to_string()),
-                    _ => Err(anyhow::anyhow!("Branch not found")),
-                }
+            .returning(|branch| match branch {
+                "master" => Ok("main_commit".to_string()),
+                "jnb/abc12345" => Ok("existing_commit".to_string()),
+                _ => Err(anyhow::anyhow!("Branch not found")),
             });
 
-        let mut mock_gh = MockGithubOps::new();
-        mock_gh
-            .expect_find_branches_with_prefix()
-            .returning(|_| Ok(vec![]));
-
-        let app = App::new(mock_jj, mock_git, mock_gh);
+        let app = App::new(standard_jj_mock(), mock_git, standard_gh_mock());
 
         let mut stdout = Vec::new();
         let result = app.cmd_create("@", &mut stdout).await;
@@ -1431,24 +1146,19 @@ mod tests {
     #[tokio::test]
     async fn test_cmd_create_errors_when_description_is_empty() {
         let mut mock_jj = MockJujutsuOps::new();
-        mock_jj
-            .expect_get_commit()
-            .returning(|_| {
-                Ok(Commit {
-                    change_id: "abc12345".to_string(),
-                    commit_id: "def45678".to_string(),
-                    message: CommitMessage {
-                        title: None,
-                        body: None,
-                    },
-                    parent_change_ids: vec![],
-                })
-            });
+        mock_jj.expect_get_commit().returning(|_| {
+            Ok(Commit {
+                change_id: "abc12345".to_string(),
+                commit_id: "def45678".to_string(),
+                message: CommitMessage {
+                    title: None,
+                    body: None,
+                },
+                parent_change_ids: vec![],
+            })
+        });
 
-        let mock_git = MockGitOps::new();
-        let mock_gh = MockGithubOps::new();
-
-        let app = App::new(mock_jj, mock_git, mock_gh);
+        let app = App::new(mock_jj, MockGitOps::new(), MockGithubOps::new());
 
         let mut stdout = Vec::new();
         let result = app.cmd_create("@", &mut stdout).await;
@@ -1468,41 +1178,37 @@ mod tests {
         let mut mock_jj = MockJujutsuOps::new();
         mock_jj
             .expect_get_commit()
-            .returning(|revision| {
-                match revision {
-                    "@" | "ccc12345" => Ok(Commit {
-                        change_id: "ccc12345".to_string(),
-                        commit_id: "commit_c_local".to_string(),
-                        message: CommitMessage {
-                            title: Some("Commit C message".to_string()),
-                            body: None,
-                        },
-                        parent_change_ids: vec!["bbb12345".to_string()],
-                    }),
-                    "bbb12345" => Ok(Commit {
-                        change_id: "bbb12345".to_string(),
-                        commit_id: "commit_b_local".to_string(),
-                        message: CommitMessage {
-                            title: Some("Commit B message".to_string()),
-                            body: None,
-                        },
-                        parent_change_ids: vec![],
-                    }),
-                    _ => Err(anyhow::anyhow!("Commit not found")),
-                }
+            .returning(|revision| match revision {
+                "@" | "ccc12345" => Ok(Commit {
+                    change_id: "ccc12345".to_string(),
+                    commit_id: "commit_c_local".to_string(),
+                    message: CommitMessage {
+                        title: Some("Commit C message".to_string()),
+                        body: None,
+                    },
+                    parent_change_ids: vec!["bbb12345".to_string()],
+                }),
+                "bbb12345" => Ok(Commit {
+                    change_id: "bbb12345".to_string(),
+                    commit_id: "commit_b_local".to_string(),
+                    message: CommitMessage {
+                        title: Some("Commit B message".to_string()),
+                        body: None,
+                    },
+                    parent_change_ids: vec![],
+                }),
+                _ => Err(anyhow::anyhow!("Commit not found")),
             });
         mock_jj
             .expect_get_trunk_commit_id()
             .returning(|| Ok("trunk123".to_string()));
-        mock_jj
-            .expect_is_ancestor()
-            .returning(|_, _| Ok(false));
-        mock_jj
-            .expect_get_stack_changes()
-            .returning(|_| Ok(vec![
+        mock_jj.expect_is_ancestor().returning(|_, _| Ok(false));
+        mock_jj.expect_get_stack_changes().returning(|_| {
+            Ok(vec![
                 ("ccc12345".to_string(), "commit_c_local".to_string()),
                 ("bbb12345".to_string(), "commit_b_local".to_string()),
-            ]));
+            ])
+        });
 
         let mut mock_git = MockGitOps::new();
         mock_git
@@ -1549,25 +1255,21 @@ mod tests {
     async fn test_cmd_restack_works_when_diffs_match() {
         // Set up a commit where the diff introduced by each commit matches (pure restack)
         let mut mock_jj = MockJujutsuOps::new();
-        mock_jj
-            .expect_get_commit()
-            .returning(|_| {
-                Ok(Commit {
-                    change_id: "abc12345".to_string(),
-                    commit_id: "local_commit".to_string(),
-                    message: CommitMessage {
-                        title: Some("Test commit message".to_string()),
-                        body: None,
-                    },
-                    parent_change_ids: vec![],
-                })
-            });
+        mock_jj.expect_get_commit().returning(|_| {
+            Ok(Commit {
+                change_id: "abc12345".to_string(),
+                commit_id: "local_commit".to_string(),
+                message: CommitMessage {
+                    title: Some("Test commit message".to_string()),
+                    body: None,
+                },
+                parent_change_ids: vec![],
+            })
+        });
         mock_jj
             .expect_get_trunk_commit_id()
             .returning(|| Ok("trunk123".to_string()));
-        mock_jj
-            .expect_is_ancestor()
-            .returning(|_, _| Ok(false));
+        mock_jj.expect_is_ancestor().returning(|_, _| Ok(false));
         mock_jj
             .expect_get_stack_changes()
             .returning(|_| Ok(vec![("abc12345".to_string(), "local_commit".to_string())]));
@@ -1575,12 +1277,10 @@ mod tests {
         let mut mock_git = MockGitOps::new();
         mock_git
             .expect_get_branch()
-            .returning(|branch| {
-                match branch {
-                    "master" => Ok("main_commit".to_string()),
-                    "jnb/abc12345" => Ok("remote_commit".to_string()),
-                    _ => Err(anyhow::anyhow!("Branch not found")),
-                }
+            .returning(|branch| match branch {
+                "master" => Ok("main_commit".to_string()),
+                "jnb/abc12345" => Ok("remote_commit".to_string()),
+                _ => Err(anyhow::anyhow!("Branch not found")),
             });
         mock_git
             .expect_get_tree()
@@ -1588,9 +1288,7 @@ mod tests {
         mock_git
             .expect_get_commit_diff()
             .returning(|_| Ok("diff --git a/src/main.rs b/src/main.rs\nindex 123..456\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1,1 +1,2 @@\n fn main() {}\n+// comment".to_string()));
-        mock_git
-            .expect_is_ancestor()
-            .returning(|_, _| Ok(true));
+        mock_git.expect_is_ancestor().returning(|_, _| Ok(true));
 
         let mut mock_gh = MockGithubOps::new();
         mock_gh
@@ -1599,9 +1297,7 @@ mod tests {
         mock_gh
             .expect_pr_diff()
             .returning(|_| Ok("diff --git a/src/main.rs b/src/main.rs\nindex 123..456\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1,1 +1,2 @@\n fn main() {}\n+// comment".to_string()));
-        mock_gh
-            .expect_pr_is_open()
-            .returning(|_| Ok(true));
+        mock_gh.expect_pr_is_open().returning(|_| Ok(true));
         mock_gh
             .expect_pr_edit()
             .returning(|_, _| Ok("https://github.com/test/repo/pull/123".to_string()));
@@ -1621,25 +1317,21 @@ mod tests {
     async fn test_cmd_restack_errors_when_diffs_differ() {
         // Set up a commit where the diff introduced differs (has local changes)
         let mut mock_jj = MockJujutsuOps::new();
-        mock_jj
-            .expect_get_commit()
-            .returning(|_| {
-                Ok(Commit {
-                    change_id: "abc12345".to_string(),
-                    commit_id: "local_commit".to_string(),
-                    message: CommitMessage {
-                        title: Some("Test commit message".to_string()),
-                        body: None,
-                    },
-                    parent_change_ids: vec![],
-                })
-            });
+        mock_jj.expect_get_commit().returning(|_| {
+            Ok(Commit {
+                change_id: "abc12345".to_string(),
+                commit_id: "local_commit".to_string(),
+                message: CommitMessage {
+                    title: Some("Test commit message".to_string()),
+                    body: None,
+                },
+                parent_change_ids: vec![],
+            })
+        });
         mock_jj
             .expect_get_trunk_commit_id()
             .returning(|| Ok("trunk123".to_string()));
-        mock_jj
-            .expect_is_ancestor()
-            .returning(|_, _| Ok(false));
+        mock_jj.expect_is_ancestor().returning(|_, _| Ok(false));
         mock_jj
             .expect_get_stack_changes()
             .returning(|_| Ok(vec![("abc12345".to_string(), "local_commit".to_string())]));
@@ -1647,12 +1339,10 @@ mod tests {
         let mut mock_git = MockGitOps::new();
         mock_git
             .expect_get_branch()
-            .returning(|branch| {
-                match branch {
-                    "master" => Ok("main_commit".to_string()),
-                    "jnb/abc12345" => Ok("remote_commit".to_string()),
-                    _ => Err(anyhow::anyhow!("Branch not found")),
-                }
+            .returning(|branch| match branch {
+                "master" => Ok("main_commit".to_string()),
+                "jnb/abc12345" => Ok("remote_commit".to_string()),
+                _ => Err(anyhow::anyhow!("Branch not found")),
             });
         mock_git
             .expect_get_tree()
@@ -1683,5 +1373,81 @@ mod tests {
         assert!(result.is_err());
         let error_msg = result.unwrap_err().to_string();
         assert!(error_msg.contains("local changes"));
+    }
+
+    // =============================================================================
+    // Test helpers
+    // =============================================================================
+
+    mod helpers {
+        use super::*;
+
+        /// Returns a MockJujutsuOps with sensible defaults for a typical commit
+        pub fn standard_jj_mock() -> MockJujutsuOps {
+            let mut mock = MockJujutsuOps::new();
+            mock.expect_get_commit()
+                .returning(|_| Ok(standard_commit()));
+            mock.expect_get_trunk_commit_id()
+                .returning(|| Ok("trunk123".to_string()));
+            mock.expect_is_ancestor().returning(|_, _| Ok(false));
+            mock.expect_get_stack_changes().returning(|_| Ok(vec![]));
+            mock.expect_get_stack_heads().returning(|| Ok(vec![]));
+            mock
+        }
+
+        /// Returns a standard test commit
+        pub fn standard_commit() -> Commit {
+            Commit {
+                change_id: "abc12345".to_string(),
+                commit_id: "def45678".to_string(),
+                message: CommitMessage {
+                    title: Some("Test commit message".to_string()),
+                    body: None,
+                },
+                parent_change_ids: vec![],
+            }
+        }
+
+        /// Standard git mock with master branch
+        pub fn standard_git_mock() -> MockGitOps {
+            let mut mock = MockGitOps::new();
+            mock.expect_get_tree()
+                .returning(|_| Ok("tree123".to_string()));
+            mock.expect_get_branch().returning(|b| {
+                if b == "master" {
+                    Ok("base_commit".to_string())
+                } else {
+                    Err(anyhow::anyhow!("Branch not found"))
+                }
+            });
+            mock.expect_is_ancestor().returning(|_, _| Ok(true));
+            mock.expect_commit_tree()
+                .returning(|_, _, _| Ok("new_commit".to_string()));
+            mock.expect_commit_tree_merge()
+                .returning(|_, _, _| Ok("new_merge_commit".to_string()));
+            mock.expect_get_commit_diff()
+                .returning(|_| Ok("M\tsrc/main.rs".to_string()));
+            mock.expect_update_branch().returning(|_, _| Ok(()));
+            mock.expect_push_branch().returning(|_| Ok(()));
+            mock
+        }
+
+        /// Standard GitHub mock with no existing branches
+        pub fn standard_gh_mock() -> MockGithubOps {
+            const PR_URL: &str = "https://github.com/test/repo/pull/123";
+            let mut mock = MockGithubOps::new();
+            mock.expect_find_branches_with_prefix()
+                .returning(|_| Ok(vec![]));
+            mock.expect_pr_create()
+                .returning(|_, _, _, _| Ok(PR_URL.to_string()));
+            mock.expect_pr_is_open().returning(|_| Ok(true));
+            mock.expect_pr_edit()
+                .returning(|_, _| Ok(PR_URL.to_string()));
+            mock.expect_pr_url()
+                .returning(|_| Ok(Some(PR_URL.to_string())));
+            mock.expect_pr_diff()
+                .returning(|_| Ok("M\tsrc/main.rs".to_string()));
+            mock
+        }
     }
 }
