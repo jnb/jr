@@ -18,7 +18,7 @@ use tracing::instrument;
 struct TestConfig {
     github_user: String,
     github_repo: String,
-    git_branch_prefix: String,
+    github_branch_prefix: String,
 }
 
 impl TestConfig {
@@ -44,7 +44,7 @@ static INSTA_FILTERS: LazyLock<Vec<(&'static str, &'static str)>> = LazyLock::ne
         (r"(\s)[0-9a-f]{40}(\s)", "$1[OBJID]$2"),
         // Branch
         (
-            Box::leak(format!("{}[k-z]{{8}}", TEST_CONFIG.git_branch_prefix).into_boxed_str()),
+            Box::leak(format!("{}[k-z]{{8}}", TEST_CONFIG.github_branch_prefix).into_boxed_str()),
             "[BRANCH]",
         ),
         // Pull request ID
@@ -88,7 +88,7 @@ async fn setup(temp_path: &std::path::Path) -> anyhow::Result<()> {
 
     // Find all branches and delete them
     let branches = RealGithub
-        .find_branches_with_prefix(&TEST_CONFIG.git_branch_prefix)
+        .find_branches_with_prefix(&TEST_CONFIG.github_branch_prefix)
         .await?;
     println!("Found {} branches to delete", branches.len());
     for branch in branches {
@@ -139,7 +139,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
 
     setup(test_dir.path()).await?;
 
-    let config = jr::Config::new(TEST_CONFIG.git_branch_prefix.clone());
+    let config = jr::Config::new(TEST_CONFIG.github_branch_prefix.clone());
     let app = jr::App::new(
         config,
         jr::ops::jujutsu::RealJujutsu,

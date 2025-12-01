@@ -8,7 +8,7 @@ use crate::ops::git::GitOps;
 use crate::ops::github::GithubOps;
 use crate::ops::jujutsu::JujutsuOps;
 
-/// Length of the change ID to use in branch names
+/// Length of the change ID to use in GitHub branch names
 pub const CHANGE_ID_LENGTH: usize = 8;
 
 pub struct App<J: JujutsuOps, G: GitOps, H: GithubOps> {
@@ -65,7 +65,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         // For each parent, check if a PR branch exists
         for parent_change_id in parent_change_ids {
             let short_parent_id = &parent_change_id[..CHANGE_ID_LENGTH.min(parent_change_id.len())];
-            let parent_branch = format!("{}{}", self.config.branch_prefix, short_parent_id);
+            let parent_branch = format!("{}{}", self.config.github_branch_prefix, short_parent_id);
 
             // Check if this PR branch exists
             if all_branches.contains(&parent_branch) {
@@ -87,7 +87,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         // Fetch all branches once
         let all_branches = self
             .gh
-            .find_branches_with_prefix(&self.config.branch_prefix)
+            .find_branches_with_prefix(&self.config.github_branch_prefix)
             .await?;
 
         // Collect all branches that exist in the stack (excluding current revision)
@@ -96,7 +96,8 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
             .filter(|(_, commit_id_in_stack)| commit_id_in_stack != &commit.commit_id)
             .filter_map(|(change_id, _commit_id_in_stack)| {
                 let short_change_id = &change_id[..CHANGE_ID_LENGTH.min(change_id.len())];
-                let expected_branch = format!("{}{}", self.config.branch_prefix, short_change_id);
+                let expected_branch =
+                    format!("{}{}", self.config.github_branch_prefix, short_change_id);
                 if all_branches.contains(&expected_branch) {
                     Some((
                         change_id.clone(),
@@ -159,7 +160,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         // For each parent, check if it has a PR and if it's outdated
         for parent_change_id in parent_change_ids {
             let short_parent_id = &parent_change_id[..CHANGE_ID_LENGTH.min(parent_change_id.len())];
-            let parent_branch = format!("{}{}", self.config.branch_prefix, short_parent_id);
+            let parent_branch = format!("{}{}", self.config.github_branch_prefix, short_parent_id);
 
             // If this parent has a PR branch, check if it's outdated
             if all_branches.contains(&parent_branch) {
@@ -167,24 +168,22 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
                 let parent_commit = self.jj.get_commit(&parent_change_id).await?;
                 let parent_local_diff = self.git.get_commit_diff(&parent_commit.commit_id).await?;
 
-                if let Some(parent_pr_diff) = pr_diffs.get(&parent_branch) {
-                    if &parent_local_diff != parent_pr_diff {
-                        return Ok(true); // Parent has local changes
-                    }
+                if let Some(parent_pr_diff) = pr_diffs.get(&parent_branch)
+                    && &parent_local_diff != parent_pr_diff
+                {
+                    return Ok(true); // Parent has local changes
                 }
 
                 // Check if parent's base has moved
                 if let Ok(parent_base_branch) = self
                     .find_previous_branch(&parent_change_id, all_branches)
                     .await
+                    && let Ok(parent_pr_commit) = self.git.get_branch(&parent_branch).await
+                    && let Ok(base_tip) = self.git.get_branch(&parent_base_branch).await
                 {
-                    if let Ok(parent_pr_commit) = self.git.get_branch(&parent_branch).await {
-                        if let Ok(base_tip) = self.git.get_branch(&parent_base_branch).await {
-                            // If base is not an ancestor of parent's PR, base has moved
-                            if !self.git.is_ancestor(&base_tip, &parent_pr_commit).await? {
-                                return Ok(true); // Parent's base has moved, needs restack
-                            }
-                        }
+                    // If base is not an ancestor of parent's PR, base has moved
+                    if !self.git.is_ancestor(&base_tip, &parent_pr_commit).await? {
+                        return Ok(true); // Parent's base has moved, needs restack
                     }
                 }
 

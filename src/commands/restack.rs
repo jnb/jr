@@ -24,12 +24,12 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
 
         // PR branch names: current and base
         let short_change_id = &commit.change_id[..CHANGE_ID_LENGTH.min(commit.change_id.len())];
-        let pr_branch = format!("{}{}", self.config.branch_prefix, short_change_id);
+        let pr_branch = format!("{}{}", self.config.github_branch_prefix, short_change_id);
 
         // Fetch all branches once
         let all_branches = self
             .gh
-            .find_branches_with_prefix(&self.config.branch_prefix)
+            .find_branches_with_prefix(&self.config.github_branch_prefix)
             .await?;
         let base_branch = self.find_previous_branch(revision, &all_branches).await?;
 

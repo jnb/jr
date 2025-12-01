@@ -17,16 +17,16 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
     pub async fn cmd_init(&self, stdout: &mut impl std::io::Write) -> Result<()> {
         // Try to load existing config or use defaults
         let current_config =
-            Config::load().unwrap_or_else(|_| Config::new(Config::default_branch_prefix()));
+            Config::load().unwrap_or_else(|_| Config::new(Config::default_github_branch_prefix()));
 
-        // Prompt for branch prefix with current value as default
-        let branch_prefix: String = Input::new()
-            .with_prompt("Branch prefix")
-            .default(current_config.branch_prefix)
+        // Prompt for GitHub branch prefix with current value as default
+        let github_branch_prefix: String = Input::new()
+            .with_prompt("GitHub branch prefix")
+            .default(current_config.github_branch_prefix)
             .interact_text()?;
 
         // Create new config with user's input
-        let new_config = Config::new(branch_prefix);
+        let new_config = Config::new(github_branch_prefix);
 
         // Save the config
         new_config.save()?;

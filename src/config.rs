@@ -6,7 +6,7 @@ use serde::Serialize;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {
-    pub branch_prefix: String,
+    pub github_branch_prefix: String,
 }
 
 impl Config {
@@ -38,14 +38,16 @@ impl Config {
     }
 
     /// Create a new config with explicit values (useful for tests)
-    pub fn new(branch_prefix: String) -> Self {
-        Self { branch_prefix }
+    pub fn new(github_branch_prefix: String) -> Self {
+        Self {
+            github_branch_prefix,
+        }
     }
 
     /// Default config for tests
     pub fn default_for_tests() -> Self {
         Self {
-            branch_prefix: "test/".to_string(),
+            github_branch_prefix: "test/".to_string(),
         }
     }
 
@@ -69,8 +71,8 @@ impl Config {
         Ok(PathBuf::from(path))
     }
 
-    /// Default branch prefix based on current user
-    pub fn default_branch_prefix() -> String {
+    /// Default GitHub branch prefix based on current user
+    pub fn default_github_branch_prefix() -> String {
         std::env::var("USER").unwrap_or_else(|_| "dev".to_string()) + "/"
     }
 }
@@ -82,18 +84,18 @@ mod tests {
     #[test]
     fn test_default_for_tests() {
         let config = Config::default_for_tests();
-        assert_eq!(config.branch_prefix, "test/");
+        assert_eq!(config.github_branch_prefix, "test/");
     }
 
     #[test]
     fn test_new() {
         let config = Config::new("custom/".to_string());
-        assert_eq!(config.branch_prefix, "custom/");
+        assert_eq!(config.github_branch_prefix, "custom/");
     }
 
     #[test]
-    fn test_default_branch_prefix() {
-        let prefix = Config::default_branch_prefix();
+    fn test_default_github_branch_prefix() {
+        let prefix = Config::default_github_branch_prefix();
         // Should be $USER/ or "dev/" if USER not set
         assert!(prefix.ends_with('/'));
     }
