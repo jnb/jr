@@ -10,16 +10,13 @@ use crate::ops::jujutsu::JujutsuOps;
 
 impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
     pub async fn cmd_create(&self, revision: &str, stdout: &mut impl std::io::Write) -> Result<()> {
-        // Get commit information from jj
         let commit = self.jj.get_commit(revision).await?;
 
-        if commit.message.title.is_none() {
+        let Some(pr_title) = &commit.message.title else {
             bail!(
                 "Cannot create PR: commit has empty description. Add a description with 'jj describe'."
             );
-        }
-
-        let pr_title = commit.message.title.as_deref().unwrap_or("");
+        };
         let pr_body = commit.message.body.as_deref().unwrap_or("");
 
         writeln!(stdout, "Change ID: {}", commit.change_id)?;
