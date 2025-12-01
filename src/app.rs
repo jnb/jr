@@ -64,7 +64,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         let parent_change_id = &commit.parent_change_ids[0];
         let short_parent_id = &parent_change_id[..CHANGE_ID_LENGTH.min(parent_change_id.len())];
         let parent_branch = format!("{}{}", self.config.github_branch_prefix, short_parent_id);
-        if self.git.get_branch(&parent_branch).await.is_ok() {
+        if self.git.get_branch_tip(&parent_branch).await.is_ok() {
             return Ok(parent_branch);
         }
 
@@ -208,7 +208,7 @@ pub(crate) mod tests {
             let mut mock = MockGitOps::new();
             mock.expect_get_tree()
                 .returning(|_| Ok("tree123".to_string()));
-            mock.expect_get_branch().returning(|b| {
+            mock.expect_get_branch_tip().returning(|b| {
                 if b == "master" || b == "main" {
                     Ok(git::CommitId("base_commit".to_string()))
                 } else {
@@ -270,7 +270,7 @@ pub(crate) mod tests {
         });
 
         let mut mock_git = MockGitOps::new();
-        mock_git.expect_get_branch().returning(|branch| {
+        mock_git.expect_get_branch_tip().returning(|branch| {
             if branch == "test/abc12345" {
                 Ok(git::CommitId("some_commit".to_string()))
             } else {
@@ -321,7 +321,7 @@ pub(crate) mod tests {
             .returning(|_| Ok(vec!["main".to_string()]));
 
         let mut mock_git = MockGitOps::new();
-        mock_git.expect_get_branch().returning(|_| {
+        mock_git.expect_get_branch_tip().returning(|_| {
             Err(anyhow::anyhow!("Branch not found")) // Parent PR branch doesn't exist
         });
 

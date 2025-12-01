@@ -16,7 +16,7 @@ use tokio::process::Command;
 #[cfg_attr(test, automock)]
 pub trait GitOps {
     async fn get_tree(&self, commit_id: &CommitId) -> Result<String>;
-    async fn get_branch(&self, branch: &str) -> Result<CommitId>;
+    async fn get_branch_tip(&self, branch: &str) -> Result<CommitId>;
     async fn commit_tree(&self, tree: &str, parent: &CommitId, message: &str) -> Result<String>;
     async fn commit_tree_merge(
         &self,
@@ -70,7 +70,7 @@ impl GitOps for RealGit {
         Ok(String::from_utf8(output.stdout)?.trim().to_string())
     }
 
-    async fn get_branch(&self, branch: &str) -> Result<CommitId> {
+    async fn get_branch_tip(&self, branch: &str) -> Result<CommitId> {
         let output = Command::new("git")
             .args(["rev-parse", &format!("origin/{}", branch)])
             .output()

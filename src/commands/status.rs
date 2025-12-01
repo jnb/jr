@@ -193,10 +193,11 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
                                 let base_has_moved = if let Some(base_branch) = _base_branch {
                                     // Get PR branch tip
                                     if let Ok(pr_branch_tip) =
-                                        self.git.get_branch(expected_branch).await
+                                        self.git.get_branch_tip(expected_branch).await
                                     {
                                         // Get base branch tip
-                                        if let Ok(base_tip) = self.git.get_branch(base_branch).await
+                                        if let Ok(base_tip) =
+                                            self.git.get_branch_tip(base_branch).await
                                         {
                                             // If base is not an ancestor of PR, base has moved
                                             !self
@@ -298,8 +299,8 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
 
                 // Check if parent's base has moved
                 if let Ok(parent_base_branch) = self.find_previous_branch(&parent_change_id).await
-                    && let Ok(parent_pr_commit) = self.git.get_branch(&parent_branch).await
-                    && let Ok(base_tip) = self.git.get_branch(&parent_base_branch).await
+                    && let Ok(parent_pr_commit) = self.git.get_branch_tip(&parent_branch).await
+                    && let Ok(base_tip) = self.git.get_branch_tip(&parent_base_branch).await
                 {
                     // If base is not an ancestor of parent's PR, base has moved
                     if !self.git.is_ancestor(&base_tip, &parent_pr_commit).await? {
@@ -349,7 +350,7 @@ mod tests {
         mock_jj.expect_get_stack_heads().returning(|| Ok(vec![]));
 
         let mut mock_git = MockGitOps::new();
-        mock_git.expect_get_branch().returning(|branch| {
+        mock_git.expect_get_branch_tip().returning(|branch| {
             if branch == "test/abc12345" {
                 Ok(git::CommitId("remote_commit".to_string()))
             } else {
@@ -402,7 +403,7 @@ mod tests {
         mock_jj.expect_get_stack_heads().returning(|| Ok(vec![]));
 
         let mut mock_git = MockGitOps::new();
-        mock_git.expect_get_branch().returning(|branch| {
+        mock_git.expect_get_branch_tip().returning(|branch| {
             if branch == "test/abc12345" {
                 Ok(git::CommitId("remote_commit".to_string()))
             } else {

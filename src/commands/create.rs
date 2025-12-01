@@ -34,7 +34,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         let tree = self.git.get_tree(&commit.commit_id).await?;
         writeln!(stdout, "Tree: {}", tree)?;
 
-        if let Ok(existing_branch_tip) = self.git.get_branch(&pr_branch).await {
+        if let Ok(existing_branch_tip) = self.git.get_branch_tip(&pr_branch).await {
             let existing_tree = self.git.get_tree(&existing_branch_tip).await?;
             if tree == existing_tree {
                 bail!("PR branch {} already exists and is up to date.", pr_branch);
@@ -49,7 +49,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         // Use base branch as parent for new PR
         let parent = self
             .git
-            .get_branch(&base_branch)
+            .get_branch_tip(&base_branch)
             .await
             .context(format!("Base branch {} does not exist", base_branch))?;
 
@@ -181,7 +181,7 @@ mod tests {
             .expect_get_tree()
             .returning(|_| Ok("same_tree".to_string()));
         mock_git
-            .expect_get_branch()
+            .expect_get_branch_tip()
             .returning(|branch| match branch {
                 "master" => Ok(git::CommitId("main_commit".to_string())),
                 "test/abc12345" => Ok(git::CommitId("existing_commit".to_string())),
@@ -212,7 +212,7 @@ mod tests {
             }
         });
         mock_git
-            .expect_get_branch()
+            .expect_get_branch_tip()
             .returning(|branch| match branch {
                 "master" => Ok(git::CommitId("main_commit".to_string())),
                 "test/abc12345" => Ok(git::CommitId("existing_commit".to_string())),
