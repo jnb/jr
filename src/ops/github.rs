@@ -6,6 +6,7 @@ use anyhow::Result;
 use mockall::automock;
 use serde::Deserialize;
 use serde::Serialize;
+use tracing::instrument;
 
 use super::github_curl::GithubCurlClient;
 
@@ -133,7 +134,9 @@ impl RealGithub {
 
         Ok((owner, repo))
     }
+
     /// Helper to get PR number from branch name
+    #[instrument(skip_all)]
     async fn get_pr_number(&self, branch: &str) -> Result<Option<u64>> {
         let url = format!(
             "https://api.github.com/repos/{}/{}/pulls?head={}:{}&state=all",
@@ -150,6 +153,7 @@ impl RealGithub {
 }
 
 impl GithubOps for RealGithub {
+    #[instrument(skip_all)]
     async fn find_branches_with_prefix(&self, prefix: &str) -> Result<Vec<String>> {
         let url = format!(
             "https://api.github.com/repos/{}/{}/git/matching-refs/heads/{}",
@@ -175,6 +179,7 @@ impl GithubOps for RealGithub {
         Ok(branches)
     }
 
+    #[instrument(skip_all)]
     async fn pr_is_open(&self, pr_branch: &str) -> Result<bool> {
         let url = format!(
             "https://api.github.com/repos/{}/{}/pulls?head={}:{}&state=open",
@@ -194,6 +199,7 @@ impl GithubOps for RealGithub {
         }
     }
 
+    #[instrument(skip_all)]
     async fn pr_url(&self, pr_branch: &str) -> Result<Option<String>> {
         let url = format!(
             "https://api.github.com/repos/{}/{}/pulls?head={}:{}&state=all",
@@ -213,6 +219,7 @@ impl GithubOps for RealGithub {
         }
     }
 
+    #[instrument(skip_all)]
     async fn pr_create(
         &self,
         pr_branch: &str,
@@ -239,6 +246,7 @@ impl GithubOps for RealGithub {
         Ok(pr.html_url)
     }
 
+    #[instrument(skip_all)]
     async fn pr_edit(&self, pr_branch: &str, base_branch: &str) -> Result<String> {
         let pr_number = self
             .get_pr_number(pr_branch)
@@ -260,6 +268,7 @@ impl GithubOps for RealGithub {
         Ok(pr.html_url)
     }
 
+    #[instrument(skip_all)]
     async fn pr_diff(&self, pr_branch: &str) -> Result<String> {
         let pr_number = self
             .get_pr_number(pr_branch)
@@ -276,6 +285,7 @@ impl GithubOps for RealGithub {
             .await
     }
 
+    #[instrument(skip_all)]
     async fn delete_branch(&self, branch: &str) -> Result<()> {
         let url = format!(
             "https://api.github.com/repos/{}/{}/git/refs/heads/{}",
