@@ -7,6 +7,7 @@ use futures_util::future::join_all;
 use crate::App;
 use crate::app::CHANGE_ID_LENGTH;
 use crate::ops::git::GitOps;
+use crate::ops::git::{self};
 use crate::ops::github::GithubOps;
 use crate::ops::jujutsu::JujutsuOps;
 
@@ -23,7 +24,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         let heads = self.jj.get_stack_heads().await?;
 
         // Collect all changes to process
-        let changes: Vec<(String, String)> = if heads.is_empty() {
+        let changes: Vec<(String, git::CommitId)> = if heads.is_empty() {
             // Current commit is on trunk or no stack exists
             vec![(
                 current_commit.change_id.clone(),
@@ -124,7 +125,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
             let base_branch_result = &base_branches[i];
 
             // Get commit and extract title from message
-            let commit = self.jj.get_commit(commit_id).await?;
+            let commit = self.jj.get_commit(&commit_id.0).await?;
             let commit_title = commit.message.title.as_deref().unwrap_or("");
 
             // Get abbreviated change ID (4 chars, matching jj status default)
@@ -163,7 +164,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         &self,
         expected_branch: &str,
         change_id: &str,
-        commit_id: &str,
+        commit_id: &git::CommitId,
         current_change_id: &str,
         all_branches: &[String],
         pr_url_result: &Result<Option<String>>,
@@ -324,6 +325,7 @@ mod tests {
     use crate::App;
     use crate::app::tests::helpers::*;
     use crate::config::Config;
+    use crate::ops::git;
     use crate::ops::git::MockGitOps;
     use crate::ops::github::MockGithubOps;
     use crate::ops::jujutsu::Commit;
@@ -336,7 +338,7 @@ mod tests {
         mock_jj.expect_get_commit().returning(|_| {
             Ok(Commit {
                 change_id: "abc12345".to_string(),
-                commit_id: "local_commit".to_string(),
+                commit_id: git::CommitId("local_commit".to_string()),
                 message: CommitMessage {
                     title: Some("Test commit message".to_string()),
                     body: None,
@@ -349,7 +351,7 @@ mod tests {
         let mut mock_git = MockGitOps::new();
         mock_git.expect_get_branch().returning(|branch| {
             if branch == "test/abc12345" {
-                Ok("remote_commit".to_string())
+                Ok(git::CommitId("remote_commit".to_string()))
             } else {
                 Err(anyhow::anyhow!("Branch not found"))
             }
@@ -389,7 +391,7 @@ mod tests {
         mock_jj.expect_get_commit().returning(|_| {
             Ok(Commit {
                 change_id: "abc12345".to_string(),
-                commit_id: "local_commit".to_string(),
+                commit_id: git::CommitId("local_commit".to_string()),
                 message: CommitMessage {
                     title: Some("Test commit message".to_string()),
                     body: None,
@@ -402,13 +404,13 @@ mod tests {
         let mut mock_git = MockGitOps::new();
         mock_git.expect_get_branch().returning(|branch| {
             if branch == "test/abc12345" {
-                Ok("remote_commit".to_string())
+                Ok(git::CommitId("remote_commit".to_string()))
             } else {
                 Err(anyhow::anyhow!("Branch not found"))
             }
         });
         mock_git.expect_get_commit_diff().returning(|commit_id| {
-            if commit_id == "local_commit" {
+            if commit_id.0 == "local_commit" {
                 Ok("M\tsrc/main.rs\nA\tsrc/new.rs".to_string())
             } else {
                 Ok("M\tsrc/main.rs".to_string())

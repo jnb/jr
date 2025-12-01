@@ -3,6 +3,7 @@ use anyhow::Result;
 
 use crate::App;
 use crate::app::CHANGE_ID_LENGTH;
+use crate::ops::git;
 use crate::ops::git::GitOps;
 use crate::ops::github::GithubOps;
 use crate::ops::jujutsu::JujutsuOps;
@@ -74,12 +75,12 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
                 .git
                 .commit_tree_merge(
                     &tree,
-                    vec![old_pr_tip.clone(), base_tip.clone()],
+                    vec![old_pr_tip.clone().0, base_tip.clone().0],
                     commit_message,
                 )
                 .await?;
             writeln!(stdout, "Created new merge commit: {}", commit)?;
-            commit
+            git::CommitId(commit)
         } else {
             // Tree changed but base hasn't - create regular commit with single parent
             let commit = self
@@ -87,7 +88,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
                 .commit_tree(&tree, &old_pr_tip, commit_message)
                 .await?;
             writeln!(stdout, "Created new commit: {}", commit)?;
-            commit
+            git::CommitId(commit)
         };
 
         // Only update if there are actual changes
@@ -97,7 +98,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         }
 
         // Update PR branch to point to new commit
-        self.git.update_branch(&pr_branch, &new_commit).await?;
+        self.git.update_branch(&pr_branch, &new_commit.0).await?;
         writeln!(stdout, "Updated PR branch {}", pr_branch)?;
 
         // Push PR branch
@@ -131,6 +132,7 @@ mod tests {
     use crate::App;
     use crate::app::tests::helpers::*;
     use crate::config::Config;
+    use crate::ops::git;
     use crate::ops::git::MockGitOps;
     use crate::ops::github::MockGithubOps;
     use crate::ops::jujutsu::Commit;
@@ -143,8 +145,8 @@ mod tests {
         mock_git
             .expect_get_branch()
             .returning(|branch| match branch {
-                "master" | "main" => Ok("main_commit".to_string()),
-                "test/abc12345" => Ok("existing_commit".to_string()),
+                "master" | "main" => Ok(git::CommitId("main_commit".to_string())),
+                "test/abc12345" => Ok(git::CommitId("existing_commit".to_string())),
                 _ => Err(anyhow::anyhow!("Branch not found")),
             });
         mock_git
@@ -178,12 +180,12 @@ mod tests {
         mock_git
             .expect_get_branch()
             .returning(|branch| match branch {
-                "master" | "main" => Ok("main_commit".to_string()),
-                "test/abc12345" => Ok("existing_commit".to_string()),
+                "master" | "main" => Ok(git::CommitId("main_commit".to_string())),
+                "test/abc12345" => Ok(git::CommitId("existing_commit".to_string())),
                 _ => Err(anyhow::anyhow!("Branch not found")),
             });
         mock_git.expect_get_tree().returning(|commit_id| {
-            if commit_id == "def45678" {
+            if commit_id.0 == "def45678" {
                 Ok("new_tree".to_string())
             } else {
                 Ok("old_tree".to_string())
@@ -229,7 +231,7 @@ mod tests {
             .returning(|revision| match revision {
                 "@" | "ccc12345" => Ok(Commit {
                     change_id: "ccc12345".to_string(),
-                    commit_id: "commit_c_local".to_string(),
+                    commit_id: git::CommitId("commit_c_local".to_string()),
                     message: CommitMessage {
                         title: Some("Commit C message".to_string()),
                         body: None,
@@ -238,7 +240,7 @@ mod tests {
                 }),
                 "bbb12345" => Ok(Commit {
                     change_id: "bbb12345".to_string(),
-                    commit_id: "commit_b_local".to_string(),
+                    commit_id: git::CommitId("commit_b_local".to_string()),
                     message: CommitMessage {
                         title: Some("Commit B message".to_string()),
                         body: None,
@@ -253,24 +255,31 @@ mod tests {
         mock_jj.expect_is_ancestor().returning(|_, _| Ok(false));
         mock_jj.expect_get_stack_changes().returning(|_| {
             Ok(vec![
-                ("ccc12345".to_string(), "commit_c_local".to_string()),
-                ("bbb12345".to_string(), "commit_b_local".to_string()),
+                (
+                    "ccc12345".to_string(),
+                    git::CommitId("commit_c_local".to_string()),
+                ),
+                (
+                    "bbb12345".to_string(),
+                    git::CommitId("commit_b_local".to_string()),
+                ),
             ])
         });
 
         let mut mock_git = MockGitOps::new();
         mock_git
             .expect_get_branch()
-            .returning(|_| Ok("branch_commit".to_string()));
+            .returning(|_| Ok(git::CommitId("branch_commit".to_string())));
         mock_git
             .expect_get_tree()
             .returning(|_| Ok("tree123".to_string()));
         mock_git
             .expect_get_commit_diff()
             .returning(|commit_id| {
-                match commit_id {
-                    "commit_b_local" => Ok("diff --git a/src/file.rs b/src/file.rs\n--- a/src/file.rs\n+++ b/src/file.rs\n@@ -1,1 +1,2 @@\n content\n+new line\ndiff --git a/src/new.rs b/src/new.rs\nnew file\n--- /dev/null\n+++ b/src/new.rs\n@@ -0,0 +1,1 @@\n+// new".to_string()),
-                    _ => Ok("diff --git a/src/other.rs b/src/other.rs\n--- a/src/other.rs\n+++ b/src/other.rs\n@@ -1,1 +1,2 @@\n content\n+change".to_string()),
+                if &commit_id.0 == "commit_b_local" {
+                    Ok("diff --git a/src/file.rs b/src/file.rs\n--- a/src/file.rs\n+++ b/src/file.rs\n@@ -1,1 +1,2 @@\n content\n+new line\ndiff --git a/src/new.rs b/src/new.rs\nnew file\n--- /dev/null\n+++ b/src/new.rs\n@@ -0,0 +1,1 @@\n+// new".to_string())
+                } else {
+                    Ok("diff --git a/src/other.rs b/src/other.rs\n--- a/src/other.rs\n+++ b/src/other.rs\n@@ -1,1 +1,2 @@\n content\n+change".to_string())
                 }
             });
 

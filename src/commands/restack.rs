@@ -77,14 +77,14 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
                 stdout,
                 "Tree unchanged and base hasn't moved, reusing old PR tip commit"
             )?;
-            old_pr_tip.clone()
+            old_pr_tip.clone().0
         } else {
             // Create merge commit with old PR tip and base as parents
             let commit = self
                 .git
                 .commit_tree_merge(
                     &tree,
-                    vec![old_pr_tip.clone(), base_tip.clone()],
+                    vec![old_pr_tip.clone().0, base_tip.clone().0],
                     commit_message,
                 )
                 .await?;
@@ -93,7 +93,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         };
 
         // Only update if there are actual changes
-        if new_commit == old_pr_tip {
+        if new_commit == old_pr_tip.0 {
             writeln!(stdout, "No changes to push - PR is already up to date")?;
             return Ok(());
         }
@@ -132,6 +132,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
 mod tests {
     use crate::App;
     use crate::config::Config;
+    use crate::ops::git;
     use crate::ops::git::MockGitOps;
     use crate::ops::github::MockGithubOps;
     use crate::ops::jujutsu::Commit;
@@ -146,7 +147,7 @@ mod tests {
             if revision == "trunk()" {
                 Ok(Commit {
                     change_id: "trunk_change_id".to_string(),
-                    commit_id: "trunk_commit".to_string(),
+                    commit_id: git::CommitId("trunk_commit".to_string()),
                     message: CommitMessage {
                         title: Some("Trunk".to_string()),
                         body: None,
@@ -156,7 +157,7 @@ mod tests {
             } else {
                 Ok(Commit {
                     change_id: "abc12345".to_string(),
-                    commit_id: "local_commit".to_string(),
+                    commit_id: git::CommitId("local_commit".to_string()),
                     message: CommitMessage {
                         title: Some("Test commit message".to_string()),
                         body: None,
@@ -169,9 +170,12 @@ mod tests {
             .expect_get_trunk_commit_id()
             .returning(|| Ok("trunk123".to_string()));
         mock_jj.expect_is_ancestor().returning(|_, _| Ok(false));
-        mock_jj
-            .expect_get_stack_changes()
-            .returning(|_| Ok(vec![("abc12345".to_string(), "local_commit".to_string())]));
+        mock_jj.expect_get_stack_changes().returning(|_| {
+            Ok(vec![(
+                "abc12345".to_string(),
+                git::CommitId("local_commit".to_string()),
+            )])
+        });
         mock_jj
             .expect_get_git_remote_branches()
             .returning(|_| Ok(vec!["main".to_string()]));
@@ -180,8 +184,8 @@ mod tests {
         mock_git
             .expect_get_branch()
             .returning(|branch| match branch {
-                "master" | "main" => Ok("main_commit".to_string()),
-                "test/abc12345" => Ok("remote_commit".to_string()),
+                "master" | "main" => Ok(git::CommitId("main_commit".to_string())),
+                "test/abc12345" => Ok(git::CommitId("remote_commit".to_string())),
                 _ => Err(anyhow::anyhow!("Branch not found")),
             });
         mock_git
@@ -223,7 +227,7 @@ mod tests {
             if revision == "trunk()" {
                 Ok(Commit {
                     change_id: "trunk_change_id".to_string(),
-                    commit_id: "trunk_commit".to_string(),
+                    commit_id: git::CommitId("trunk_commit".to_string()),
                     message: CommitMessage {
                         title: Some("Trunk".to_string()),
                         body: None,
@@ -233,7 +237,7 @@ mod tests {
             } else {
                 Ok(Commit {
                     change_id: "abc12345".to_string(),
-                    commit_id: "local_commit".to_string(),
+                    commit_id: git::CommitId("local_commit".to_string()),
                     message: CommitMessage {
                         title: Some("Test commit message".to_string()),
                         body: None,
@@ -246,9 +250,12 @@ mod tests {
             .expect_get_trunk_commit_id()
             .returning(|| Ok("trunk123".to_string()));
         mock_jj.expect_is_ancestor().returning(|_, _| Ok(false));
-        mock_jj
-            .expect_get_stack_changes()
-            .returning(|_| Ok(vec![("abc12345".to_string(), "local_commit".to_string())]));
+        mock_jj.expect_get_stack_changes().returning(|_| {
+            Ok(vec![(
+                "abc12345".to_string(),
+                git::CommitId("local_commit".to_string()),
+            )])
+        });
         mock_jj
             .expect_get_git_remote_branches()
             .returning(|_| Ok(vec!["main".to_string()]));
@@ -257,8 +264,8 @@ mod tests {
         mock_git
             .expect_get_branch()
             .returning(|branch| match branch {
-                "master" | "main" => Ok("main_commit".to_string()),
-                "test/abc12345" => Ok("remote_commit".to_string()),
+                "master" | "main" => Ok(git::CommitId("main_commit".to_string())),
+                "test/abc12345" => Ok(git::CommitId("remote_commit".to_string())),
                 _ => Err(anyhow::anyhow!("Branch not found")),
             });
         mock_git
@@ -267,7 +274,7 @@ mod tests {
         mock_git
             .expect_get_commit_diff()
             .returning(|commit_id| {
-                if commit_id == "local_commit" {
+                if commit_id.0 == "local_commit" {
                     Ok("diff --git a/src/main.rs b/src/main.rs\nindex 123..456\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1,1 +1,2 @@\n fn main() {}\n+// comment\ndiff --git a/src/new.rs b/src/new.rs\nnew file\n--- /dev/null\n+++ b/src/new.rs\n@@ -0,0 +1,1 @@\n+// new file".to_string())
                 } else {
                     Ok("diff --git a/src/main.rs b/src/main.rs\nindex 123..456\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1,1 +1,2 @@\n fn main() {}\n+// comment".to_string())

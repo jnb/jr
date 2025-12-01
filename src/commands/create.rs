@@ -1,5 +1,6 @@
 use anyhow::Context;
 use anyhow::Result;
+use anyhow::bail;
 
 use crate::App;
 use crate::app::CHANGE_ID_LENGTH;
@@ -12,11 +13,10 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         // Get commit information from jj
         let commit = self.jj.get_commit(revision).await?;
 
-        // Validate commit message is not empty
         if commit.message.title.is_none() {
-            return Err(anyhow::anyhow!(
+            bail!(
                 "Cannot create PR: commit has empty description. Add a description with 'jj describe'."
-            ));
+            );
         }
 
         let pr_title = commit.message.title.as_deref().unwrap_or("");
@@ -27,7 +27,6 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
 
         self.validate_not_merged_to_main(&commit).await?;
 
-        // PR branch names: current and base
         let short_change_id = &commit.change_id[..CHANGE_ID_LENGTH.min(commit.change_id.len())];
         let pr_branch = format!("{}{}", self.config.github_branch_prefix, short_change_id);
         let base_branch = self.find_previous_branch(revision).await?;
@@ -35,23 +34,18 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         writeln!(stdout, "PR branch: {}", pr_branch)?;
         writeln!(stdout, "Base branch: {}", base_branch)?;
 
-        // Get the tree from the current Jujutsu commit (represents current state)
         let tree = self.git.get_tree(&commit.commit_id).await?;
         writeln!(stdout, "Tree: {}", tree)?;
 
-        // Check if PR branch already exists - if so, check if it's up to date
         if let Ok(existing_branch_tip) = self.git.get_branch(&pr_branch).await {
             let existing_tree = self.git.get_tree(&existing_branch_tip).await?;
             if tree == existing_tree {
-                return Err(anyhow::anyhow!(
-                    "PR branch {} already exists and is up to date.",
-                    pr_branch
-                ));
+                bail!("PR branch {} already exists and is up to date.", pr_branch);
             } else {
-                return Err(anyhow::anyhow!(
+                bail!(
                     "PR branch {} already exists with different content. Use 'jr update -m \"message\"' to update it.",
                     pr_branch
-                ));
+                );
             }
         }
 
@@ -62,22 +56,18 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
             .await
             .context(format!("Base branch {} does not exist", base_branch))?;
 
-        // Create new commit with jj commit message
         let new_commit = self
             .git
             .commit_tree(&tree, &parent, &commit.full_message())
             .await?;
         writeln!(stdout, "Created new commit: {}", new_commit)?;
 
-        // Update PR branch to point to new commit
         self.git.update_branch(&pr_branch, &new_commit).await?;
         writeln!(stdout, "Updated PR branch {}", pr_branch)?;
 
-        // Push PR branch
         self.git.push_branch(&pr_branch).await?;
         writeln!(stdout, "Pushed PR branch {}", pr_branch)?;
 
-        // Create PR
         let pr_url = self
             .gh
             .pr_create(&pr_branch, &base_branch, pr_title, pr_body)
@@ -98,6 +88,7 @@ mod tests {
     use crate::App;
     use crate::app::tests::helpers::*;
     use crate::config::Config;
+    use crate::ops::git;
     use crate::ops::git::MockGitOps;
     use crate::ops::github::MockGithubOps;
     use crate::ops::jujutsu::Commit;
@@ -138,7 +129,7 @@ mod tests {
         mock_jj.expect_get_commit().returning(|_| {
             Ok(Commit {
                 change_id: "abc12345".to_string(),
-                commit_id: "old_commit".to_string(),
+                commit_id: git::CommitId("old_commit".to_string()),
                 message: CommitMessage {
                     title: Some("Test commit message".to_string()),
                     body: None,
@@ -195,8 +186,8 @@ mod tests {
         mock_git
             .expect_get_branch()
             .returning(|branch| match branch {
-                "master" => Ok("main_commit".to_string()),
-                "test/abc12345" => Ok("existing_commit".to_string()),
+                "master" => Ok(git::CommitId("main_commit".to_string())),
+                "test/abc12345" => Ok(git::CommitId("existing_commit".to_string())),
                 _ => Err(anyhow::anyhow!("Branch not found")),
             });
 
@@ -217,7 +208,7 @@ mod tests {
     async fn test_cmd_create_errors_when_branch_exists_with_different_content() {
         let mut mock_git = MockGitOps::new();
         mock_git.expect_get_tree().returning(|commit| {
-            if commit == "def45678" {
+            if commit.0 == "def45678" {
                 Ok("new_tree".to_string())
             } else {
                 Ok("old_tree".to_string())
@@ -226,8 +217,8 @@ mod tests {
         mock_git
             .expect_get_branch()
             .returning(|branch| match branch {
-                "master" => Ok("main_commit".to_string()),
-                "test/abc12345" => Ok("existing_commit".to_string()),
+                "master" => Ok(git::CommitId("main_commit".to_string())),
+                "test/abc12345" => Ok(git::CommitId("existing_commit".to_string())),
                 _ => Err(anyhow::anyhow!("Branch not found")),
             });
 
@@ -255,7 +246,7 @@ mod tests {
         mock_jj.expect_get_commit().returning(|_| {
             Ok(Commit {
                 change_id: "abc12345".to_string(),
-                commit_id: "def45678".to_string(),
+                commit_id: git::CommitId("def45678".to_string()),
                 message: CommitMessage {
                     title: None,
                     body: None,

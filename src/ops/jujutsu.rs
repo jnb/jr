@@ -7,6 +7,8 @@ use anyhow::anyhow;
 use mockall::automock;
 use tokio::process::Command;
 
+use crate::ops::git;
+
 // -----------------------------------------------------------------------------
 // Types
 
@@ -22,7 +24,7 @@ pub trait JujutsuOps {
 
     /// Get all changes from revision back to (but not including) the main branch
     /// Returns them in order from tip to base as (change_id, commit_id) tuples
-    async fn get_stack_changes(&self, revision: &str) -> Result<Vec<(String, String)>>;
+    async fn get_stack_changes(&self, revision: &str) -> Result<Vec<(String, git::CommitId)>>;
 
     /// Get the commit ID of the trunk branch (main/master)
     async fn get_trunk_commit_id(&self) -> Result<String>;
@@ -38,7 +40,7 @@ pub trait JujutsuOps {
 /// Represents a commit with its IDs and message
 pub struct Commit {
     pub change_id: String,
-    pub commit_id: String,
+    pub commit_id: git::CommitId,
     pub message: CommitMessage,
     pub parent_change_ids: Vec<String>,
 }
@@ -100,7 +102,7 @@ impl JujutsuOps for RealJujutsu {
             ));
         }
 
-        let commit_id = parts[0].to_string();
+        let commit_id = git::CommitId(parts[0].to_string());
         let change_id = parts[1].to_string();
         let description = parts[2].to_string();
         let parent_ids_str = parts[3];
@@ -184,7 +186,7 @@ impl JujutsuOps for RealJujutsu {
         Ok(heads)
     }
 
-    async fn get_stack_changes(&self, revision: &str) -> Result<Vec<(String, String)>> {
+    async fn get_stack_changes(&self, revision: &str) -> Result<Vec<(String, git::CommitId)>> {
         // Get all ancestors of revision that are not ancestors of trunk (main/master)
         // trunk() is a jj built-in that automatically detects the main branch
         let stack_revset = format!("ancestors({}) ~ ancestors(trunk())", revision);
@@ -209,13 +211,13 @@ impl JujutsuOps for RealJujutsu {
             ));
         }
 
-        let changes: Vec<(String, String)> = String::from_utf8(output.stdout)?
+        let changes: Vec<(String, git::CommitId)> = String::from_utf8(output.stdout)?
             .lines()
             .filter(|s| !s.is_empty())
             .filter_map(|line| {
                 let parts: Vec<&str> = line.split('|').collect();
                 if parts.len() == 2 {
-                    Some((parts[0].to_string(), parts[1].to_string()))
+                    Some((parts[0].to_string(), git::CommitId(parts[1].to_string())))
                 } else {
                     None
                 }

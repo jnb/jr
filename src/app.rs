@@ -38,7 +38,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
 
         if self
             .jj
-            .is_ancestor(&commit.commit_id, &trunk_commit)
+            .is_ancestor(&commit.commit_id.0, &trunk_commit)
             .await?
         {
             return Err(anyhow::anyhow!(
@@ -89,7 +89,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
     pub(crate) async fn check_parent_prs_up_to_date(&self, revision: &str) -> Result<()> {
         // Get all changes in the stack from revision back to trunk
         let commit = self.jj.get_commit(revision).await?;
-        let stack_changes = self.jj.get_stack_changes(&commit.commit_id).await?;
+        let stack_changes = self.jj.get_stack_changes(&commit.commit_id.0).await?;
 
         // Fetch all branches once
         let all_branches = self
@@ -155,6 +155,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
 #[cfg(test)]
 pub(crate) mod tests {
     pub(crate) mod helpers {
+        use crate::ops::git;
         use crate::ops::git::MockGitOps;
         use crate::ops::github::MockGithubOps;
         use crate::ops::jujutsu::Commit;
@@ -168,7 +169,7 @@ pub(crate) mod tests {
                 if revision == "trunk()" {
                     Ok(Commit {
                         change_id: "trunk_change_id".to_string(),
-                        commit_id: "trunk_commit_id".to_string(),
+                        commit_id: git::CommitId("trunk_commit_id".to_string()),
                         message: CommitMessage {
                             title: Some("Trunk commit".to_string()),
                             body: None,
@@ -193,7 +194,7 @@ pub(crate) mod tests {
         pub fn standard_commit() -> Commit {
             Commit {
                 change_id: "abc12345".to_string(),
-                commit_id: "def45678".to_string(),
+                commit_id: git::CommitId("def45678".to_string()),
                 message: CommitMessage {
                     title: Some("Test commit message".to_string()),
                     body: None,
@@ -209,7 +210,7 @@ pub(crate) mod tests {
                 .returning(|_| Ok("tree123".to_string()));
             mock.expect_get_branch().returning(|b| {
                 if b == "master" || b == "main" {
-                    Ok("base_commit".to_string())
+                    Ok(git::CommitId("base_commit".to_string()))
                 } else {
                     Err(anyhow::anyhow!("Branch not found"))
                 }
@@ -246,6 +247,7 @@ pub(crate) mod tests {
     }
 
     use super::*;
+    use crate::ops::git;
     use crate::ops::git::MockGitOps;
     use crate::ops::github::MockGithubOps;
     use crate::ops::jujutsu::Commit;
@@ -258,7 +260,7 @@ pub(crate) mod tests {
         mock_jj.expect_get_commit().returning(|_| {
             Ok(Commit {
                 change_id: "abc12345".to_string(),
-                commit_id: "def45678".to_string(),
+                commit_id: git::CommitId("def45678".to_string()),
                 message: CommitMessage {
                     title: Some("Test commit message".to_string()),
                     body: None,
@@ -270,7 +272,7 @@ pub(crate) mod tests {
         let mut mock_git = MockGitOps::new();
         mock_git.expect_get_branch().returning(|branch| {
             if branch == "test/abc12345" {
-                Ok("some_commit".to_string())
+                Ok(git::CommitId("some_commit".to_string()))
             } else {
                 Err(anyhow::anyhow!("Branch not found"))
             }
@@ -295,7 +297,7 @@ pub(crate) mod tests {
             if revision == "trunk()" {
                 Ok(Commit {
                     change_id: "trunk123".to_string(),
-                    commit_id: "trunk_commit_id".to_string(),
+                    commit_id: git::CommitId("trunk_commit_id".to_string()),
                     message: CommitMessage {
                         title: Some("Trunk commit".to_string()),
                         body: None,
@@ -305,7 +307,7 @@ pub(crate) mod tests {
             } else {
                 Ok(Commit {
                     change_id: "xyz78901".to_string(),
-                    commit_id: "def45678".to_string(),
+                    commit_id: git::CommitId("def45678".to_string()),
                     message: CommitMessage {
                         title: Some("Test commit message".to_string()),
                         body: None,
