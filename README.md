@@ -81,11 +81,14 @@ In more detail:
 
 This is what I use.
 
-### jr is relatively self-contained
+## Implementation
 
-`jr` only requires that `jj`, `git` and `curl` are in your PATH.
+`jr` is just some coordination glue; it shells-out to `jj`, `git` and `curl` to
+perform the actual work.  (It could have been implemented as a shell script,
+although the results wouldn't have been pretty.)  I chose this approach in order
+to minimize the number of Rust dependencies.  And, I could probably still remove
+a few more dependencies.
 
-### jr uses relatively few dependencies
-
-I've minimized the number of dependencies that `jr` uses.  I could probably
-still remove a few more.
+Note that we're using `curl` instead of the `gh` GitHub CLI because you might
+not have `gh` installed (and it's not that hard to make a few cURL requests to
+the GitHub API).
