@@ -72,6 +72,14 @@ struct UpdatePullRequest {
     base: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct GitHubError {
+    message: String,
+    #[serde(default)]
+    #[allow(dead_code)]
+    documentation_url: Option<String>,
+}
+
 // -----------------------------------------------------------------------------
 // RealGithub
 
@@ -134,6 +142,8 @@ impl RealGithub {
         let output = Command::new("curl")
             .args([
                 "-s",
+                "-w",
+                "\n%{http_code}",
                 "-H",
                 &format!("Authorization: Bearer {}", self.token),
                 "-H",
@@ -153,7 +163,30 @@ impl RealGithub {
             ));
         }
 
-        Ok(String::from_utf8(output.stdout)?)
+        let output_str = String::from_utf8(output.stdout)?;
+        let mut lines: Vec<&str> = output_str.rsplitn(2, '\n').collect();
+        lines.reverse();
+
+        let response = lines.first().unwrap_or(&"").to_string();
+        let status_code = lines
+            .get(1)
+            .and_then(|s| s.parse::<u16>().ok())
+            .unwrap_or(0);
+
+        // Check HTTP status code
+        if status_code >= 400 {
+            // Try to parse error message from response
+            if let Ok(error) = serde_json::from_str::<GitHubError>(&response) {
+                return Err(anyhow!("GitHub API error: {}", error.message));
+            }
+            return Err(anyhow!(
+                "GitHub API request failed with status {}: {}",
+                status_code,
+                response
+            ));
+        }
+
+        Ok(response)
     }
 
     /// Make a POST request to GitHub API
@@ -161,6 +194,8 @@ impl RealGithub {
         let output = Command::new("curl")
             .args([
                 "-s",
+                "-w",
+                "\n%{http_code}",
                 "-X",
                 "POST",
                 "-H",
@@ -186,7 +221,30 @@ impl RealGithub {
             ));
         }
 
-        Ok(String::from_utf8(output.stdout)?)
+        let output_str = String::from_utf8(output.stdout)?;
+        let mut lines: Vec<&str> = output_str.rsplitn(2, '\n').collect();
+        lines.reverse();
+
+        let response = lines.first().unwrap_or(&"").to_string();
+        let status_code = lines
+            .get(1)
+            .and_then(|s| s.parse::<u16>().ok())
+            .unwrap_or(0);
+
+        // Check HTTP status code
+        if status_code >= 400 {
+            // Try to parse error message from response
+            if let Ok(error) = serde_json::from_str::<GitHubError>(&response) {
+                return Err(anyhow!("GitHub API error: {}", error.message));
+            }
+            return Err(anyhow!(
+                "GitHub API request failed with status {}: {}",
+                status_code,
+                response
+            ));
+        }
+
+        Ok(response)
     }
 
     /// Make a PATCH request to GitHub API
@@ -194,6 +252,8 @@ impl RealGithub {
         let output = Command::new("curl")
             .args([
                 "-s",
+                "-w",
+                "\n%{http_code}",
                 "-X",
                 "PATCH",
                 "-H",
@@ -219,7 +279,30 @@ impl RealGithub {
             ));
         }
 
-        Ok(String::from_utf8(output.stdout)?)
+        let output_str = String::from_utf8(output.stdout)?;
+        let mut lines: Vec<&str> = output_str.rsplitn(2, '\n').collect();
+        lines.reverse();
+
+        let response = lines.first().unwrap_or(&"").to_string();
+        let status_code = lines
+            .get(1)
+            .and_then(|s| s.parse::<u16>().ok())
+            .unwrap_or(0);
+
+        // Check HTTP status code
+        if status_code >= 400 {
+            // Try to parse error message from response
+            if let Ok(error) = serde_json::from_str::<GitHubError>(&response) {
+                return Err(anyhow!("GitHub API error: {}", error.message));
+            }
+            return Err(anyhow!(
+                "GitHub API request failed with status {}: {}",
+                status_code,
+                response
+            ));
+        }
+
+        Ok(response)
     }
 
     /// Make a DELETE request to GitHub API
