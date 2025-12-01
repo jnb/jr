@@ -111,7 +111,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         // Get base branches concurrently
         let base_branch_futures: Vec<_> = changes
             .iter()
-            .map(|(change_id, _commit_id)| self.find_previous_branch(change_id, &all_branches))
+            .map(|(change_id, _commit_id)| self.find_previous_branch(change_id))
             .collect();
         let base_branches = join_all(base_branch_futures).await;
 
@@ -296,9 +296,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
                 }
 
                 // Check if parent's base has moved
-                if let Ok(parent_base_branch) = self
-                    .find_previous_branch(&parent_change_id, all_branches)
-                    .await
+                if let Ok(parent_base_branch) = self.find_previous_branch(&parent_change_id).await
                     && let Ok(parent_pr_commit) = self.git.get_branch(&parent_branch).await
                     && let Ok(base_tip) = self.git.get_branch(&parent_base_branch).await
                 {
@@ -448,7 +446,7 @@ mod tests {
         let app = App::new(
             Config::default_for_tests(),
             standard_jj_mock(),
-            MockGitOps::new(),
+            standard_git_mock(),
             mock_gh,
         );
 
@@ -470,7 +468,7 @@ mod tests {
         let app = App::new(
             Config::default_for_tests(),
             standard_jj_mock(),
-            MockGitOps::new(),
+            standard_git_mock(),
             mock_gh,
         );
 

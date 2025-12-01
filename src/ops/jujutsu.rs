@@ -27,6 +27,10 @@ pub trait JujutsuOps {
     /// Get the commit ID of the trunk branch (main/master)
     async fn get_trunk_commit_id(&self) -> Result<String>;
 
+    /// Get the remote git branches for a commit by change_id
+    /// Returns branch names with "origin/" prefix stripped (e.g., ["main", "test/abc12345"])
+    async fn get_git_remote_branches(&self, change_id: &str) -> Result<Vec<String>>;
+
     /// Check if `commit` is an ancestor of `descendant` using Jujutsu revsets
     async fn is_ancestor(&self, commit: &str, descendant: &str) -> Result<bool>;
 }
@@ -237,6 +241,41 @@ impl JujutsuOps for RealJujutsu {
         }
 
         Ok(String::from_utf8(output.stdout)?.trim().to_string())
+    }
+
+    async fn get_git_remote_branches(&self, change_id: &str) -> Result<Vec<String>> {
+        let output = Command::new("jj")
+            .args([
+                "log",
+                "-r",
+                change_id,
+                "--no-graph",
+                "-T",
+                r#"git_refs.map(|ref| ref.name()).join("\n")"#,
+            ])
+            .output()
+            .await
+            .context("Failed to execute jj command")?;
+
+        if !output.status.success() {
+            return Err(anyhow!(
+                "jj command failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+
+        let output_str = String::from_utf8(output.stdout)?.trim().to_string();
+
+        // Parse git refs and filter for remote branches only
+        let branches: Vec<String> = output_str
+            .lines()
+            .filter_map(|line| {
+                line.strip_prefix("refs/remotes/origin/")
+                    .map(|s| s.to_string())
+            })
+            .collect();
+
+        Ok(branches)
     }
 
     async fn is_ancestor(&self, commit: &str, descendant: &str) -> Result<bool> {

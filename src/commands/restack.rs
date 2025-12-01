@@ -25,13 +25,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         // PR branch names: current and base
         let short_change_id = &commit.change_id[..CHANGE_ID_LENGTH.min(commit.change_id.len())];
         let pr_branch = format!("{}{}", self.config.github_branch_prefix, short_change_id);
-
-        // Fetch all branches once
-        let all_branches = self
-            .gh
-            .find_branches_with_prefix(&self.config.github_branch_prefix)
-            .await?;
-        let base_branch = self.find_previous_branch(revision, &all_branches).await?;
+        let base_branch = self.find_previous_branch(revision).await?;
 
         writeln!(stdout, "PR branch: {}", pr_branch)?;
         writeln!(stdout, "Base branch: {}", base_branch)?;
@@ -148,16 +142,28 @@ mod tests {
     async fn test_cmd_restack_works_when_diffs_match() {
         // Set up a commit where the diff introduced by each commit matches (pure restack)
         let mut mock_jj = MockJujutsuOps::new();
-        mock_jj.expect_get_commit().returning(|_| {
-            Ok(Commit {
-                change_id: "abc12345".to_string(),
-                commit_id: "local_commit".to_string(),
-                message: CommitMessage {
-                    title: Some("Test commit message".to_string()),
-                    body: None,
-                },
-                parent_change_ids: vec![],
-            })
+        mock_jj.expect_get_commit().returning(|revision| {
+            if revision == "trunk()" {
+                Ok(Commit {
+                    change_id: "trunk_change_id".to_string(),
+                    commit_id: "trunk_commit".to_string(),
+                    message: CommitMessage {
+                        title: Some("Trunk".to_string()),
+                        body: None,
+                    },
+                    parent_change_ids: vec![],
+                })
+            } else {
+                Ok(Commit {
+                    change_id: "abc12345".to_string(),
+                    commit_id: "local_commit".to_string(),
+                    message: CommitMessage {
+                        title: Some("Test commit message".to_string()),
+                        body: None,
+                    },
+                    parent_change_ids: vec!["trunk_change_id".to_string()],
+                })
+            }
         });
         mock_jj
             .expect_get_trunk_commit_id()
@@ -166,12 +172,15 @@ mod tests {
         mock_jj
             .expect_get_stack_changes()
             .returning(|_| Ok(vec![("abc12345".to_string(), "local_commit".to_string())]));
+        mock_jj
+            .expect_get_git_remote_branches()
+            .returning(|_| Ok(vec!["main".to_string()]));
 
         let mut mock_git = MockGitOps::new();
         mock_git
             .expect_get_branch()
             .returning(|branch| match branch {
-                "master" => Ok("main_commit".to_string()),
+                "master" | "main" => Ok("main_commit".to_string()),
                 "test/abc12345" => Ok("remote_commit".to_string()),
                 _ => Err(anyhow::anyhow!("Branch not found")),
             });
@@ -210,16 +219,28 @@ mod tests {
     async fn test_cmd_restack_errors_when_diffs_differ() {
         // Set up a commit where the diff introduced differs (has local changes)
         let mut mock_jj = MockJujutsuOps::new();
-        mock_jj.expect_get_commit().returning(|_| {
-            Ok(Commit {
-                change_id: "abc12345".to_string(),
-                commit_id: "local_commit".to_string(),
-                message: CommitMessage {
-                    title: Some("Test commit message".to_string()),
-                    body: None,
-                },
-                parent_change_ids: vec![],
-            })
+        mock_jj.expect_get_commit().returning(|revision| {
+            if revision == "trunk()" {
+                Ok(Commit {
+                    change_id: "trunk_change_id".to_string(),
+                    commit_id: "trunk_commit".to_string(),
+                    message: CommitMessage {
+                        title: Some("Trunk".to_string()),
+                        body: None,
+                    },
+                    parent_change_ids: vec![],
+                })
+            } else {
+                Ok(Commit {
+                    change_id: "abc12345".to_string(),
+                    commit_id: "local_commit".to_string(),
+                    message: CommitMessage {
+                        title: Some("Test commit message".to_string()),
+                        body: None,
+                    },
+                    parent_change_ids: vec!["trunk_change_id".to_string()],
+                })
+            }
         });
         mock_jj
             .expect_get_trunk_commit_id()
@@ -228,12 +249,15 @@ mod tests {
         mock_jj
             .expect_get_stack_changes()
             .returning(|_| Ok(vec![("abc12345".to_string(), "local_commit".to_string())]));
+        mock_jj
+            .expect_get_git_remote_branches()
+            .returning(|_| Ok(vec!["main".to_string()]));
 
         let mut mock_git = MockGitOps::new();
         mock_git
             .expect_get_branch()
             .returning(|branch| match branch {
-                "master" => Ok("main_commit".to_string()),
+                "master" | "main" => Ok("main_commit".to_string()),
                 "test/abc12345" => Ok("remote_commit".to_string()),
                 _ => Err(anyhow::anyhow!("Branch not found")),
             });

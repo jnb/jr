@@ -30,13 +30,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         // PR branch names: current and base
         let short_change_id = &commit.change_id[..CHANGE_ID_LENGTH.min(commit.change_id.len())];
         let pr_branch = format!("{}{}", self.config.github_branch_prefix, short_change_id);
-
-        // Fetch all branches once
-        let all_branches = self
-            .gh
-            .find_branches_with_prefix(&self.config.github_branch_prefix)
-            .await?;
-        let base_branch = self.find_previous_branch(revision, &all_branches).await?;
+        let base_branch = self.find_previous_branch(revision).await?;
 
         writeln!(stdout, "PR branch: {}", pr_branch)?;
         writeln!(stdout, "Base branch: {}", base_branch)?;
@@ -116,7 +110,7 @@ mod tests {
         mock_gh
             .expect_pr_create()
             .withf(|pr_branch, base_branch, _title, _body| {
-                pr_branch == "test/abc12345" && base_branch == "master"
+                pr_branch == "test/abc12345" && base_branch == "main"
             })
             .returning(|_, _, _, _| Ok("https://github.com/test/repo/pull/123".to_string()));
 
@@ -129,13 +123,13 @@ mod tests {
 
         let mut stdout = Vec::new();
         let result = app.cmd_create("@", &mut stdout).await;
-        assert!(result.is_ok());
+        assert!(result.is_ok(), "Error: {:?}", result.err());
 
         // Verify output
         let output = String::from_utf8(stdout).unwrap();
         assert!(output.contains("Change ID: abc12345"));
         assert!(output.contains("PR branch: test/abc12345"));
-        assert!(output.contains("Base branch: master"));
+        assert!(output.contains("Base branch: main"));
     }
 
     #[tokio::test]

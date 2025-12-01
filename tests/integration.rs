@@ -18,6 +18,7 @@ use std::sync::LazyLock;
 
 use jr::ops::github::GithubOps as _;
 use jr::ops::github::RealGithub;
+use log::debug;
 use serde::Deserialize;
 use tracing::instrument;
 
@@ -172,6 +173,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     // -------------------------------------------------------------------------
     // Create PR for Alpha
 
+    debug!("Creating PR for alpha");
     let (out, _) = run_and_capture!(|out, _| app.cmd_create("description(Alpha)", out));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
         Change ID: [CHGID]
@@ -186,6 +188,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
         PR URL: https://github.com/[USER]/[REPO]/[PRID]
     ");
 
+    debug!("Getting status");
     let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
         ? [CHGID]
@@ -198,6 +201,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     // -------------------------------------------------------------------------
     // Create PR for Beta
 
+    debug!("Creating PR for beta");
     let (out, _) = run_and_capture!(|out, _| app.cmd_create("description(Beta)", out));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
         Change ID: [CHGID]
@@ -212,6 +216,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
         PR URL: https://github.com/[USER]/[REPO]/[PRID]
     ");
 
+    debug!("Getting status");
     let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
         ? [CHGID]
@@ -225,6 +230,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     // -------------------------------------------------------------------------
     // Create PR for Gamma
 
+    debug!("Creating PR for gamma");
     let (out, _) = run_and_capture!(|out, _| app.cmd_create("description(Gamma)", out));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
         Change ID: [CHGID]
@@ -239,6 +245,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
         PR URL: https://github.com/[USER]/[REPO]/[PRID]
     ");
 
+    debug!("Getting status");
     let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
         ? [CHGID]
@@ -253,9 +260,11 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     // -------------------------------------------------------------------------
     // Edit Alpha
 
+    debug!("Editing alpha");
     utils::jj_edit(test_dir.path(), "description(Alpha) & mine()").await?;
     tokio::fs::write(test_dir.path().join("alpha"), "alpha1\n").await?;
 
+    debug!("Getting status");
     let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
         ↻ [CHGID] Gamma
@@ -269,6 +278,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     // -------------------------------------------------------------------------
     // Update Alpha
 
+    debug!("Updating alpha");
     let (out, _) = run_and_capture!(|out, _| app.cmd_update(
         "description(Alpha) & mine()",
         "Update alpha",
@@ -288,6 +298,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     PR URL: https://github.com/[USER]/[REPO]/[PRID]
     ");
 
+    debug!("Getting status");
     let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
         ↻ [CHGID] Gamma
@@ -301,6 +312,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     // -------------------------------------------------------------------------
     // Restack Beta
 
+    debug!("Restacking beta");
     let (out, _) = run_and_capture!(|out, _| app.cmd_restack("description(Beta) & mine()", out));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
         Change ID: [CHGID]
@@ -317,6 +329,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
         PR URL: https://github.com/[USER]/[REPO]/[PRID]
     ");
 
+    debug!("Gettings status");
     let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
         ↻ [CHGID] Gamma
@@ -330,6 +343,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     // -------------------------------------------------------------------------
     // Restack Gamma
 
+    debug!("Restacking gamma");
     let (out, _) = run_and_capture!(|out, _| app.cmd_restack("description(Gamma) & mine()", out));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
         Change ID: [CHGID]
@@ -346,6 +360,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
         PR URL: https://github.com/[USER]/[REPO]/[PRID]
     ");
 
+    debug!("Getting status");
     let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
         ✓ [CHGID] Gamma

@@ -26,13 +26,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         // PR branch names: current and base
         let short_change_id = &commit.change_id[..CHANGE_ID_LENGTH.min(commit.change_id.len())];
         let pr_branch = format!("{}{}", self.config.github_branch_prefix, short_change_id);
-
-        // Fetch all branches once
-        let all_branches = self
-            .gh
-            .find_branches_with_prefix(&self.config.github_branch_prefix)
-            .await?;
-        let base_branch = self.find_previous_branch(revision, &all_branches).await?;
+        let base_branch = self.find_previous_branch(revision).await?;
 
         writeln!(stdout, "PR branch: {}", pr_branch)?;
         writeln!(stdout, "Base branch: {}", base_branch)?;
@@ -149,7 +143,7 @@ mod tests {
         mock_git
             .expect_get_branch()
             .returning(|branch| match branch {
-                "master" => Ok("main_commit".to_string()),
+                "master" | "main" => Ok("main_commit".to_string()),
                 "test/abc12345" => Ok("existing_commit".to_string()),
                 _ => Err(anyhow::anyhow!("Branch not found")),
             });
@@ -163,7 +157,7 @@ mod tests {
         let mut mock_gh = standard_gh_mock();
         mock_gh
             .expect_pr_edit()
-            .withf(|pr_branch, base_branch| pr_branch == "test/abc12345" && base_branch == "master")
+            .withf(|pr_branch, base_branch| pr_branch == "test/abc12345" && base_branch == "main")
             .returning(|_, _| Ok("https://github.com/test/repo/pull/123".to_string()));
 
         let app = App::new(
@@ -175,7 +169,7 @@ mod tests {
 
         let mut stdout = Vec::new();
         let result = app.cmd_update("@", "Update from review", &mut stdout).await;
-        assert!(result.is_ok());
+        assert!(result.is_ok(), "Error: {:?}", result.err());
     }
 
     #[tokio::test]
@@ -184,7 +178,7 @@ mod tests {
         mock_git
             .expect_get_branch()
             .returning(|branch| match branch {
-                "master" => Ok("main_commit".to_string()),
+                "master" | "main" => Ok("main_commit".to_string()),
                 "test/abc12345" => Ok("existing_commit".to_string()),
                 _ => Err(anyhow::anyhow!("Branch not found")),
             });

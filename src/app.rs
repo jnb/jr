@@ -1,4 +1,5 @@
 use anyhow::Result;
+use anyhow::bail;
 
 use crate::config::Config;
 use crate::ops::git::GitOps;
@@ -50,28 +51,37 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
     }
 
     /// Find the previous PR branch in the stack based on parent change IDs from jujutsu
-    pub(crate) async fn find_previous_branch(
-        &self,
-        revision: &str,
-        all_branches: &[String],
-    ) -> Result<String> {
-        // Get parent change IDs from commit
+    pub(crate) async fn find_previous_branch(&self, revision: &str) -> Result<String> {
         let commit = self.jj.get_commit(revision).await?;
-        let parent_change_ids = commit.parent_change_ids;
-
-        // For each parent, check if a PR branch exists
-        for parent_change_id in parent_change_ids {
-            let short_parent_id = &parent_change_id[..CHANGE_ID_LENGTH.min(parent_change_id.len())];
-            let parent_branch = format!("{}{}", self.config.github_branch_prefix, short_parent_id);
-
-            // Check if this PR branch exists
-            if all_branches.contains(&parent_branch) {
-                return Ok(parent_branch);
-            }
+        if commit.parent_change_ids.is_empty() {
+            bail!("No parents found");
+        }
+        if commit.parent_change_ids.len() > 1 {
+            bail!("Multiple parents found");
         }
 
-        // Default to master if no parent PR branch found
-        Ok("master".to_string())
+        // Check if parent PR branch exists
+        let parent_change_id = &commit.parent_change_ids[0];
+        let short_parent_id = &parent_change_id[..CHANGE_ID_LENGTH.min(parent_change_id.len())];
+        let parent_branch = format!("{}{}", self.config.github_branch_prefix, short_parent_id);
+        if self.git.get_branch(&parent_branch).await.is_ok() {
+            return Ok(parent_branch);
+        }
+
+        // Check if parent is trunk
+        let trunk_commit = self.jj.get_commit("trunk()").await?;
+        if parent_change_id == &trunk_commit.change_id {
+            let trunk_branches = self
+                .jj
+                .get_git_remote_branches(&trunk_commit.change_id)
+                .await?;
+            if trunk_branches.is_empty() {
+                bail!("Trunk has no remote branch. Push trunk to remote first.");
+            }
+            return Ok(trunk_branches[0].clone());
+        }
+
+        bail!("Parent commit has no PR branch. Create parent PR first (bottom-up).")
     }
 
     /// Check if any parent PRs in the stack are outdated
@@ -154,17 +164,32 @@ pub(crate) mod tests {
         /// Returns a MockJujutsuOps with sensible defaults for a typical commit
         pub fn standard_jj_mock() -> MockJujutsuOps {
             let mut mock = MockJujutsuOps::new();
-            mock.expect_get_commit()
-                .returning(|_| Ok(standard_commit()));
+            mock.expect_get_commit().returning(|revision| {
+                if revision == "trunk()" {
+                    Ok(Commit {
+                        change_id: "trunk_change_id".to_string(),
+                        commit_id: "trunk_commit_id".to_string(),
+                        message: CommitMessage {
+                            title: Some("Trunk commit".to_string()),
+                            body: None,
+                        },
+                        parent_change_ids: vec![],
+                    })
+                } else {
+                    Ok(standard_commit())
+                }
+            });
             mock.expect_get_trunk_commit_id()
                 .returning(|| Ok("trunk123".to_string()));
             mock.expect_is_ancestor().returning(|_, _| Ok(false));
             mock.expect_get_stack_changes().returning(|_| Ok(vec![]));
             mock.expect_get_stack_heads().returning(|| Ok(vec![]));
+            mock.expect_get_git_remote_branches()
+                .returning(|_| Ok(vec!["main".to_string()]));
             mock
         }
 
-        /// Returns a standard test commit
+        /// Returns a standard test commit with a parent on trunk
         pub fn standard_commit() -> Commit {
             Commit {
                 change_id: "abc12345".to_string(),
@@ -173,17 +198,17 @@ pub(crate) mod tests {
                     title: Some("Test commit message".to_string()),
                     body: None,
                 },
-                parent_change_ids: vec![],
+                parent_change_ids: vec!["trunk_change_id".to_string()],
             }
         }
 
-        /// Standard git mock with master branch
+        /// Standard git mock with main/master branch
         pub fn standard_git_mock() -> MockGitOps {
             let mut mock = MockGitOps::new();
             mock.expect_get_tree()
                 .returning(|_| Ok("tree123".to_string()));
             mock.expect_get_branch().returning(|b| {
-                if b == "master" {
+                if b == "master" || b == "main" {
                     Ok("base_commit".to_string())
                 } else {
                     Err(anyhow::anyhow!("Branch not found"))
@@ -242,44 +267,71 @@ pub(crate) mod tests {
             })
         });
 
-        let app = App::new(
-            Config::default_for_tests(),
-            mock_jj,
-            MockGitOps::new(),
-            MockGithubOps::new(),
-        );
-
-        let all_branches = vec!["test/abc12345".to_string()];
-        let result = app.find_previous_branch("@", &all_branches).await;
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "test/abc12345");
-    }
-
-    #[tokio::test]
-    async fn test_find_previous_branch_defaults_to_master() {
-        let mut mock_jj = MockJujutsuOps::new();
-        mock_jj.expect_get_commit().returning(|_| {
-            Ok(Commit {
-                change_id: "xyz78901".to_string(),
-                commit_id: "def45678".to_string(),
-                message: CommitMessage {
-                    title: Some("Test commit message".to_string()),
-                    body: None,
-                },
-                parent_change_ids: vec!["nonexistent123".to_string()],
-            })
+        let mut mock_git = MockGitOps::new();
+        mock_git.expect_get_branch().returning(|branch| {
+            if branch == "test/abc12345" {
+                Ok("some_commit".to_string())
+            } else {
+                Err(anyhow::anyhow!("Branch not found"))
+            }
         });
 
         let app = App::new(
             Config::default_for_tests(),
             mock_jj,
-            MockGitOps::new(),
+            mock_git,
             MockGithubOps::new(),
         );
 
-        let all_branches = vec!["test/abc12345".to_string()];
-        let result = app.find_previous_branch("@", &all_branches).await;
+        let result = app.find_previous_branch("@").await;
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "master");
+        assert_eq!(result.unwrap(), "test/abc12345");
+    }
+
+    #[tokio::test]
+    async fn test_find_previous_branch_with_trunk() {
+        let mut mock_jj = MockJujutsuOps::new();
+        mock_jj.expect_get_commit().returning(|revision| {
+            if revision == "trunk()" {
+                Ok(Commit {
+                    change_id: "trunk123".to_string(),
+                    commit_id: "trunk_commit_id".to_string(),
+                    message: CommitMessage {
+                        title: Some("Trunk commit".to_string()),
+                        body: None,
+                    },
+                    parent_change_ids: vec![],
+                })
+            } else {
+                Ok(Commit {
+                    change_id: "xyz78901".to_string(),
+                    commit_id: "def45678".to_string(),
+                    message: CommitMessage {
+                        title: Some("Test commit message".to_string()),
+                        body: None,
+                    },
+                    parent_change_ids: vec!["trunk123".to_string()],
+                })
+            }
+        });
+        mock_jj
+            .expect_get_git_remote_branches()
+            .returning(|_| Ok(vec!["main".to_string()]));
+
+        let mut mock_git = MockGitOps::new();
+        mock_git.expect_get_branch().returning(|_| {
+            Err(anyhow::anyhow!("Branch not found")) // Parent PR branch doesn't exist
+        });
+
+        let app = App::new(
+            Config::default_for_tests(),
+            mock_jj,
+            mock_git,
+            MockGithubOps::new(),
+        );
+
+        let result = app.find_previous_branch("@").await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "main");
     }
 }
