@@ -4,29 +4,47 @@
 onto stacked GitHub PRs.
 
 This tool is inspired by:
-
 - Phabraciator Arcanist (`arc`) CLI tool
 - [Super Pull Requests](https://github.com/spacedentist/spr); we use a similar
-  `init`flow.
+  `init` flow.
 
 ## Installation
 
 Clone this repo and run:
-
 ```sh
 cargo install --path .
 ```
 
 By default, cargo install places binaries in `~/.cargo/bin/`. Make sure this
 directory is in your PATH:
-
 ```sh
 export PATH="$HOME/.cargo/bin:$PATH"
 ```
 
 ## Quickstart
 
-Run `jr init` in the root of a git-backed Jujutsu repository.
+Run `jr init` in the root of a git-backed Jujutsu repository to setup
+configuration.
+
+To see the status of all pull requests in your stack:
+```sh
+jr status
+```
+
+To create a new PR from the current commit:
+```sh
+jr create
+```
+
+To update a PR with your changes to the current commit:
+```sh
+jr update -m "My commit message"
+```
+
+To merge in changes from an updated base branch:
+```sh
+jr restack
+```
 
 ## Design principles
 
@@ -63,9 +81,11 @@ In more detail:
 
 This is what I use.
 
-### jr is self-contained
+### jr is relatively self-contained
 
-Original I shelled-out to the `gh` CLI tool.  But this is just another
-dependency.  So instead we directly make calls against the GitHub API.  The
-tradeoff is that this requires the user to setup GitHub API keys; we guide them
-through this process as part of the `jr init` flow.
+`jr` only requires that `jj`, `git` and `curl` are in your PATH.
+
+### jr uses relatively few dependencies
+
+I've minimized the number of dependencies that `jr` uses.  I could probably
+still remove a few more.
