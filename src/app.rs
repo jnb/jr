@@ -217,9 +217,9 @@ pub(crate) mod tests {
             });
             mock.expect_is_ancestor().returning(|_, _| Ok(true));
             mock.expect_commit_tree()
-                .returning(|_, _, _| Ok("new_commit".to_string()));
+                .returning(|_, _, _| Ok(git::CommitId("new_commit".to_string())));
             mock.expect_commit_tree_merge()
-                .returning(|_, _, _| Ok("new_merge_commit".to_string()));
+                .returning(|_, _, _| Ok(git::CommitId("new_merge_commit".to_string())));
             mock.expect_get_commit_diff()
                 .returning(|_| Ok("M\tsrc/main.rs".to_string()));
             mock.expect_update_branch().returning(|_, _| Ok(()));

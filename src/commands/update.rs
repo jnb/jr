@@ -3,7 +3,6 @@ use anyhow::Result;
 
 use crate::App;
 use crate::app::CHANGE_ID_LENGTH;
-use crate::ops::git;
 use crate::ops::git::GitOps;
 use crate::ops::github::GithubOps;
 use crate::ops::jujutsu::JujutsuOps;
@@ -75,12 +74,12 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
                 .git
                 .commit_tree_merge(
                     &tree,
-                    vec![old_pr_tip.clone().0, base_tip.clone().0],
+                    vec![old_pr_tip.clone(), base_tip.clone()],
                     commit_message,
                 )
                 .await?;
             writeln!(stdout, "Created new merge commit: {}", commit)?;
-            git::CommitId(commit)
+            commit
         } else {
             // Tree changed but base hasn't - create regular commit with single parent
             let commit = self
@@ -88,7 +87,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
                 .commit_tree(&tree, &old_pr_tip, commit_message)
                 .await?;
             writeln!(stdout, "Created new commit: {}", commit)?;
-            git::CommitId(commit)
+            commit
         };
 
         // Only update if there are actual changes
@@ -98,7 +97,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         }
 
         // Update PR branch to point to new commit
-        self.git.update_branch(&pr_branch, &new_commit.0).await?;
+        self.git.update_branch(&pr_branch, &new_commit).await?;
         writeln!(stdout, "Updated PR branch {}", pr_branch)?;
 
         // Push PR branch
@@ -194,7 +193,7 @@ mod tests {
         mock_git.expect_is_ancestor().returning(|_, _| Ok(true));
         mock_git
             .expect_commit_tree()
-            .returning(|_, _, _| Ok("new_commit_obj".to_string()));
+            .returning(|_, _, _| Ok(git::CommitId("new_commit_obj".to_string())));
         mock_git.expect_update_branch().returning(|_, _| Ok(()));
         mock_git.expect_push_branch().returning(|_| Ok(()));
 

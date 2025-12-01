@@ -77,14 +77,14 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
                 stdout,
                 "Tree unchanged and base hasn't moved, reusing old PR tip commit"
             )?;
-            old_pr_tip.clone().0
+            old_pr_tip.clone()
         } else {
             // Create merge commit with old PR tip and base as parents
             let commit = self
                 .git
                 .commit_tree_merge(
                     &tree,
-                    vec![old_pr_tip.clone().0, base_tip.clone().0],
+                    vec![old_pr_tip.clone(), base_tip.clone()],
                     commit_message,
                 )
                 .await?;
@@ -93,7 +93,7 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         };
 
         // Only update if there are actual changes
-        if new_commit == old_pr_tip.0 {
+        if new_commit == old_pr_tip {
             writeln!(stdout, "No changes to push - PR is already up to date")?;
             return Ok(());
         }

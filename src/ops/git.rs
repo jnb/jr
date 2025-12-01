@@ -17,14 +17,14 @@ use tokio::process::Command;
 pub trait GitOps {
     async fn get_tree(&self, commit_id: &CommitId) -> Result<String>;
     async fn get_branch_tip(&self, branch: &str) -> Result<CommitId>;
-    async fn commit_tree(&self, tree: &str, parent: &CommitId, message: &str) -> Result<String>;
+    async fn commit_tree(&self, tree: &str, parent: &CommitId, message: &str) -> Result<CommitId>;
     async fn commit_tree_merge(
         &self,
         tree: &str,
-        parents: Vec<String>,
+        parents: Vec<CommitId>,
         message: &str,
-    ) -> Result<String>;
-    async fn update_branch(&self, branch: &str, commit: &str) -> Result<()>;
+    ) -> Result<CommitId>;
+    async fn update_branch(&self, branch: &str, commit_id: &CommitId) -> Result<()>;
     async fn push_branch(&self, branch: &str) -> Result<()>;
 
     /// Check if `commit` is an ancestor of `descendant`.
@@ -89,7 +89,7 @@ impl GitOps for RealGit {
         ))
     }
 
-    async fn commit_tree(&self, tree: &str, parent: &CommitId, message: &str) -> Result<String> {
+    async fn commit_tree(&self, tree: &str, parent: &CommitId, message: &str) -> Result<CommitId> {
         let output = Command::new("git")
             .args(["commit-tree", tree, "-p", &parent.0, "-m", message])
             .output()
@@ -103,19 +103,21 @@ impl GitOps for RealGit {
             ));
         }
 
-        Ok(String::from_utf8(output.stdout)?.trim().to_string())
+        Ok(CommitId(
+            String::from_utf8(output.stdout)?.trim().to_string(),
+        ))
     }
 
     async fn commit_tree_merge(
         &self,
         tree: &str,
-        parents: Vec<String>,
+        parents: Vec<CommitId>,
         message: &str,
-    ) -> Result<String> {
+    ) -> Result<CommitId> {
         let mut args = vec!["commit-tree".to_string(), tree.to_string()];
         for parent in &parents {
             args.push("-p".to_string());
-            args.push(parent.clone());
+            args.push(parent.clone().0);
         }
         args.push("-m".to_string());
         args.push(message.to_string());
@@ -133,12 +135,18 @@ impl GitOps for RealGit {
             ));
         }
 
-        Ok(String::from_utf8(output.stdout)?.trim().to_string())
+        Ok(CommitId(
+            String::from_utf8(output.stdout)?.trim().to_string(),
+        ))
     }
 
-    async fn update_branch(&self, branch: &str, commit: &str) -> Result<()> {
+    async fn update_branch(&self, branch: &str, commit_id: &CommitId) -> Result<()> {
         let output = Command::new("git")
-            .args(["update-ref", &format!("refs/heads/{}", branch), commit])
+            .args([
+                "update-ref",
+                &format!("refs/heads/{}", branch),
+                &commit_id.0,
+            ])
             .output()
             .await
             .context("Failed to execute git command")?;
