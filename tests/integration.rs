@@ -3,6 +3,12 @@
 //!   cargo test --test integration -- --nocapture --include-ignored
 //!
 //! Prefix with DEBUG_TESTS=1 to keep local repos around.
+//!
+//! These tests hit a real github repo, which must be configured in a
+//! .test-config.yaml file in the repo root.  Example contents:
+//!
+//!   github_user: jnb
+//!   github_repo: test_repo
 
 mod macros;
 mod utils;
@@ -14,16 +20,17 @@ use jr::ops::github::RealGithub;
 use serde::Deserialize;
 use tracing::instrument;
 
+const GITHUB_BRANCH_PREFIX: &str = "test/";
+
 #[derive(Debug, Deserialize)]
 struct TestConfig {
     github_user: String,
     github_repo: String,
-    github_branch_prefix: String,
 }
 
 impl TestConfig {
     fn load() -> anyhow::Result<Self> {
-        let config_path = std::path::Path::new(".jr.test.yaml");
+        let config_path = std::path::Path::new(".test-config.yaml");
         let config_str = std::fs::read_to_string(config_path)?;
         let config: TestConfig = serde_yml::from_str(&config_str)?;
         Ok(config)
@@ -31,7 +38,7 @@ impl TestConfig {
 }
 
 static TEST_CONFIG: LazyLock<TestConfig> =
-    LazyLock::new(|| TestConfig::load().expect("Failed to load .jr.test.yaml"));
+    LazyLock::new(|| TestConfig::load().expect("Failed to load .test-config.yaml"));
 
 /// Normalize IDs for snapshot comparisons.
 static INSTA_FILTERS: LazyLock<Vec<(&'static str, &'static str)>> = LazyLock::new(|| {
@@ -44,7 +51,7 @@ static INSTA_FILTERS: LazyLock<Vec<(&'static str, &'static str)>> = LazyLock::ne
         (r"(\s)[0-9a-f]{40}(\s)", "$1[OBJID]$2"),
         // Branch
         (
-            Box::leak(format!("{}[k-z]{{8}}", TEST_CONFIG.github_branch_prefix).into_boxed_str()),
+            Box::leak(format!("{}[k-z]{{8}}", GITHUB_BRANCH_PREFIX).into_boxed_str()),
             "[BRANCH]",
         ),
         // Pull request ID
@@ -88,7 +95,7 @@ async fn setup(temp_path: &std::path::Path) -> anyhow::Result<()> {
 
     // Find all branches and delete them
     let branches = RealGithub
-        .find_branches_with_prefix(&TEST_CONFIG.github_branch_prefix)
+        .find_branches_with_prefix(GITHUB_BRANCH_PREFIX)
         .await?;
     println!("Found {} branches to delete", branches.len());
     for branch in branches {
@@ -139,7 +146,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
 
     setup(test_dir.path()).await?;
 
-    let config = jr::Config::new(TEST_CONFIG.github_branch_prefix.clone());
+    let config = jr::Config::new(GITHUB_BRANCH_PREFIX.to_string());
     let app = jr::App::new(
         config,
         jr::ops::jujutsu::RealJujutsu,
