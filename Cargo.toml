@@ -2,6 +2,7 @@
 name = "jr"
 version = "0.1.0"
 edition = "2024"
+repository = "https://github.com/jnb/jr"
 
 [lib]
 doctest = false
@@ -24,3 +25,8 @@ serde_yml = "0.0.12"
 tempfile = "3.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["chrono", "env-filter"] }
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
