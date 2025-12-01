@@ -186,6 +186,7 @@ impl GitOps for RealGit {
             ));
         }
 
-        Ok(String::from_utf8(output.stdout)?.trim().to_string())
+        // Don't trim - we want to preserve trailing newlines to match GitHub API diff format
+        Ok(String::from_utf8(output.stdout)?)
     }
 }

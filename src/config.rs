@@ -3,29 +3,40 @@ use anyhow::Result;
 #[derive(Debug, Clone)]
 pub struct Config {
     pub github_branch_prefix: String,
+    pub github_token: String,
 }
 
 impl Config {
     /// Load config from .git/config
     pub fn load() -> Result<Self> {
-        let output = std::process::Command::new("git")
+        let prefix_output = std::process::Command::new("git")
             .args(["config", "--get", "jr.githubBranchPrefix"])
             .output()?;
 
-        if !output.status.success() {
+        if !prefix_output.status.success() {
             anyhow::bail!("Config not found in .git/config. Run 'jr init' to create one.");
         }
 
-        let github_branch_prefix = String::from_utf8(output.stdout)?.trim().to_string();
+        let token_output = std::process::Command::new("git")
+            .args(["config", "--get", "jr.githubToken"])
+            .output()?;
+
+        if !token_output.status.success() {
+            anyhow::bail!("GitHub token not found in .git/config. Run 'jr init' to configure.");
+        }
+
+        let github_branch_prefix = String::from_utf8(prefix_output.stdout)?.trim().to_string();
+        let github_token = String::from_utf8(token_output.stdout)?.trim().to_string();
 
         Ok(Self {
             github_branch_prefix,
+            github_token,
         })
     }
 
     /// Save config to .git/config
     pub fn save(&self) -> Result<()> {
-        let output = std::process::Command::new("git")
+        let prefix_output = std::process::Command::new("git")
             .args([
                 "config",
                 "jr.githubBranchPrefix",
@@ -33,17 +44,26 @@ impl Config {
             ])
             .output()?;
 
-        if !output.status.success() {
-            anyhow::bail!("Failed to save config to .git/config");
+        if !prefix_output.status.success() {
+            anyhow::bail!("Failed to save github_branch_prefix to .git/config");
+        }
+
+        let token_output = std::process::Command::new("git")
+            .args(["config", "jr.githubToken", &self.github_token])
+            .output()?;
+
+        if !token_output.status.success() {
+            anyhow::bail!("Failed to save github_token to .git/config");
         }
 
         Ok(())
     }
 
     /// Create a new config with explicit values (useful for tests)
-    pub fn new(github_branch_prefix: String) -> Self {
+    pub fn new(github_branch_prefix: String, github_token: String) -> Self {
         Self {
             github_branch_prefix,
+            github_token,
         }
     }
 
@@ -51,6 +71,7 @@ impl Config {
     pub fn default_for_tests() -> Self {
         Self {
             github_branch_prefix: "test/".to_string(),
+            github_token: "test_token".to_string(),
         }
     }
 
@@ -72,8 +93,9 @@ mod tests {
 
     #[test]
     fn test_new() {
-        let config = Config::new("custom/".to_string());
+        let config = Config::new("custom/".to_string(), "token123".to_string());
         assert_eq!(config.github_branch_prefix, "custom/");
+        assert_eq!(config.github_token, "token123");
     }
 
     #[test]

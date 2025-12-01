@@ -9,6 +9,7 @@
 //!
 //!   github_user: jnb
 //!   github_repo: test_repo
+//!   github_token: github_pat_...
 
 mod macros;
 mod utils;
@@ -26,6 +27,7 @@ const GITHUB_BRANCH_PREFIX: &str = "test/";
 struct TestConfig {
     github_user: String,
     github_repo: String,
+    github_token: String,
 }
 
 impl TestConfig {
@@ -94,13 +96,14 @@ async fn setup(temp_path: &std::path::Path) -> anyhow::Result<()> {
     std::env::set_current_dir(temp_path)?;
 
     // Find all branches and delete them
-    let branches = RealGithub
+    let github = RealGithub::new(TEST_CONFIG.github_token.clone())?;
+    let branches = github
         .find_branches_with_prefix(GITHUB_BRANCH_PREFIX)
         .await?;
     println!("Found {} branches to delete", branches.len());
     for branch in branches {
         println!("Deleting branch: {}", branch);
-        RealGithub.delete_branch(&branch).await?;
+        github.delete_branch(&branch).await?;
     }
 
     // Update git repo again because we deleted remote branches
@@ -146,12 +149,16 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
 
     setup(test_dir.path()).await?;
 
-    let config = jr::Config::new(GITHUB_BRANCH_PREFIX.to_string());
+    let config = jr::Config::new(
+        GITHUB_BRANCH_PREFIX.to_string(),
+        TEST_CONFIG.github_token.clone(),
+    );
+    let github = jr::ops::github::RealGithub::new(TEST_CONFIG.github_token.clone())?;
     let app = jr::App::new(
         config,
         jr::ops::jujutsu::RealJujutsu,
         jr::ops::git::RealGit,
-        jr::ops::github::RealGithub,
+        github,
     );
 
     let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));

@@ -52,14 +52,16 @@ async fn main() -> Result<()> {
     if matches!(cli.command, Some(Commands::Init)) {
         // For init, we don't need to load config first
         let temp_config = Config::default_for_tests(); // Placeholder, not used
-        let app = App::new(temp_config, RealJujutsu, RealGit, RealGithub);
+        let temp_github = RealGithub::new(temp_config.github_token.clone())?;
+        let app = App::new(temp_config, RealJujutsu, RealGit, temp_github);
         app.cmd_init(&mut std::io::stdout()).await?;
         return Ok(());
     }
 
     // For all other commands, load config first
     let config = Config::load()?;
-    let app = App::new(config, RealJujutsu, RealGit, RealGithub);
+    let github = RealGithub::new(config.github_token.clone())?;
+    let app = App::new(config, RealJujutsu, RealGit, github);
 
     match cli.command {
         Some(Commands::Init) => unreachable!(), // Already handled above

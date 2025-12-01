@@ -1,0 +1,43 @@
+{"run_id":"1764550518-451318000","line":190,"new":{"module_name":"integration","snapshot_name":"stacked_workflow-4","metadata":{"source":"tests/integration.rs","assertion_line":190,"expression":"out"},"snapshot":"? [CHGID]\n? [CHGID] Gamma\n? [CHGID] Beta\n✗ [CHGID] Alpha\n  https://github.com/[USER]/[REPO]/[PRID]"},"old":{"module_name":"integration","metadata":{},"snapshot":"? [CHGID]\n? [CHGID] Gamma\n? [CHGID] Beta\n✓ [CHGID] Alpha\n  https://github.com/[USER]/[REPO]/[PRID]"}}
+{"run_id":"1764550736-858721000","line":148,"new":null,"old":null}
+{"run_id":"1764550736-858721000","line":119,"new":null,"old":null}
+{"run_id":"1764550736-858721000","line":165,"new":null,"old":null}
+{"run_id":"1764550736-858721000","line":176,"new":null,"old":null}
+{"run_id":"1764550736-858721000","line":190,"new":{"module_name":"integration","snapshot_name":"stacked_workflow-4","metadata":{"source":"tests/integration.rs","assertion_line":190,"expression":"out"},"snapshot":"? [CHGID]\n? [CHGID] Gamma\n? [CHGID] Beta\n✗ [CHGID] Alpha\n  https://github.com/[USER]/[REPO]/[PRID]"},"old":{"module_name":"integration","metadata":{},"snapshot":"? [CHGID]\n? [CHGID] Gamma\n? [CHGID] Beta\n✓ [CHGID] Alpha\n  https://github.com/[USER]/[REPO]/[PRID]"}}
+{"run_id":"1764550808-413164000","line":148,"new":null,"old":null}
+{"run_id":"1764550808-413164000","line":119,"new":null,"old":null}
+{"run_id":"1764550808-413164000","line":165,"new":null,"old":null}
+{"run_id":"1764550808-413164000","line":176,"new":null,"old":null}
+{"run_id":"1764550808-413164000","line":190,"new":{"module_name":"integration","snapshot_name":"stacked_workflow-4","metadata":{"source":"tests/integration.rs","assertion_line":190,"expression":"out"},"snapshot":"? [CHGID]\n? [CHGID] Gamma\n? [CHGID] Beta\n✗ [CHGID] Alpha\n  https://github.com/[USER]/[REPO]/[PRID]"},"old":{"module_name":"integration","metadata":{},"snapshot":"? [CHGID]\n? [CHGID] Gamma\n? [CHGID] Beta\n✓ [CHGID] Alpha\n  https://github.com/[USER]/[REPO]/[PRID]"}}
+{"run_id":"1764550896-311323000","line":148,"new":null,"old":null}
+{"run_id":"1764550896-311323000","line":119,"new":null,"old":null}
+{"run_id":"1764550896-311323000","line":165,"new":null,"old":null}
+{"run_id":"1764550896-311323000","line":176,"new":null,"old":null}
+{"run_id":"1764550896-311323000","line":190,"new":null,"old":null}
+{"run_id":"1764550896-311323000","line":202,"new":null,"old":null}
+{"run_id":"1764550896-311323000","line":216,"new":null,"old":null}
+{"run_id":"1764550896-311323000","line":229,"new":null,"old":null}
+{"run_id":"1764550896-311323000","line":243,"new":null,"old":null}
+{"run_id":"1764550896-311323000","line":260,"new":null,"old":null}
+{"run_id":"1764550896-311323000","line":277,"new":null,"old":null}
+{"run_id":"1764550896-311323000","line":292,"new":null,"old":null}
+{"run_id":"1764550896-311323000","line":305,"new":null,"old":null}
+{"run_id":"1764550896-311323000","line":321,"new":null,"old":null}
+{"run_id":"1764550896-311323000","line":334,"new":null,"old":null}
+{"run_id":"1764550896-311323000","line":350,"new":null,"old":null}
+{"run_id":"1764551768-273802000","line":148,"new":null,"old":null}
+{"run_id":"1764551768-273802000","line":119,"new":null,"old":null}
+{"run_id":"1764551768-273802000","line":165,"new":null,"old":null}
+{"run_id":"1764551768-273802000","line":176,"new":null,"old":null}
+{"run_id":"1764551768-273802000","line":190,"new":null,"old":null}
+{"run_id":"1764551768-273802000","line":202,"new":null,"old":null}
+{"run_id":"1764551768-273802000","line":216,"new":null,"old":null}
+{"run_id":"1764551768-273802000","line":229,"new":null,"old":null}
+{"run_id":"1764551768-273802000","line":243,"new":null,"old":null}
+{"run_id":"1764551768-273802000","line":260,"new":null,"old":null}
+{"run_id":"1764551768-273802000","line":277,"new":null,"old":null}
+{"run_id":"1764551768-273802000","line":292,"new":null,"old":null}
+{"run_id":"1764551768-273802000","line":305,"new":null,"old":null}
+{"run_id":"1764551768-273802000","line":321,"new":null,"old":null}
+{"run_id":"1764551768-273802000","line":334,"new":null,"old":null}
+{"run_id":"1764551768-273802000","line":350,"new":null,"old":null}

@@ -5,6 +5,8 @@ use anyhow::Result;
 use anyhow::anyhow;
 #[cfg(test)]
 use mockall::automock;
+use serde::Deserialize;
+use serde::Serialize;
 use tokio::process::Command;
 
 // -----------------------------------------------------------------------------
@@ -41,72 +43,280 @@ pub trait GithubOps {
 }
 
 // -----------------------------------------------------------------------------
+// GitHub API types
+
+#[derive(Debug, Deserialize)]
+struct GitRef {
+    #[serde(rename = "ref")]
+    ref_name: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct PullRequest {
+    number: u64,
+    html_url: String,
+    state: String,
+}
+
+#[derive(Debug, Serialize)]
+struct CreatePullRequest {
+    title: String,
+    body: String,
+    head: String,
+    base: String,
+    draft: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct UpdatePullRequest {
+    base: String,
+}
+
+// -----------------------------------------------------------------------------
 // RealGithub
 
-/// Real implementation that calls the gh CLI
-pub struct RealGithub;
+/// Real implementation that makes HTTP requests to GitHub API via curl
+pub struct RealGithub {
+    token: String,
+    owner: String,
+    repo: String,
+}
 
-impl GithubOps for RealGithub {
-    async fn find_branches_with_prefix(&self, prefix: &str) -> Result<Vec<String>> {
-        let api_path = format!("/repos/:owner/:repo/git/matching-refs/heads/{}", prefix);
+impl RealGithub {
+    pub fn new(token: String) -> Result<Self> {
+        let (owner, repo) = Self::detect_owner_and_repo()?;
 
-        let output = Command::new("gh")
+        Ok(Self { token, owner, repo })
+    }
+
+    /// Detect owner and repo from git remote URL
+    fn detect_owner_and_repo() -> Result<(String, String)> {
+        let output = std::process::Command::new("git")
+            .args(["config", "--get", "remote.origin.url"])
+            .output()
+            .context("Failed to get git remote URL")?;
+
+        if !output.status.success() {
+            anyhow::bail!("No git remote 'origin' configured");
+        }
+
+        let url = String::from_utf8(output.stdout)?.trim().to_string();
+
+        // Parse URLs like:
+        // git@github.com:owner/repo.git
+        // https://github.com/owner/repo.git
+        let parts = if url.starts_with("git@github.com:") {
+            url.strip_prefix("git@github.com:")
+                .context("Invalid GitHub URL format")?
+        } else if url.starts_with("https://github.com/") {
+            url.strip_prefix("https://github.com/")
+                .context("Invalid GitHub URL format")?
+        } else {
+            anyhow::bail!("Remote URL is not a GitHub URL: {}", url);
+        };
+
+        let parts = parts.strip_suffix(".git").unwrap_or(parts);
+        let mut split = parts.split('/');
+        let owner = split
+            .next()
+            .context("Could not parse owner from GitHub URL")?
+            .to_string();
+        let repo = split
+            .next()
+            .context("Could not parse repo from GitHub URL")?
+            .to_string();
+
+        Ok((owner, repo))
+    }
+
+    /// Make a GET request to GitHub API
+    async fn curl_get(&self, url: &str, accept: &str) -> Result<String> {
+        let output = Command::new("curl")
             .args([
-                "api",
-                &api_path,
-                "--jq",
-                ".[].ref | sub(\"^refs/heads/\";\"\")",
+                "-s",
+                "-H",
+                &format!("Authorization: Bearer {}", self.token),
+                "-H",
+                &format!("Accept: {}", accept),
+                "-H",
+                "User-Agent: jr-cli",
+                url,
             ])
             .output()
             .await
-            .context("Failed to execute gh command")?;
+            .context("Failed to execute curl command")?;
 
         if !output.status.success() {
             return Err(anyhow!(
-                "gh command failed: {}",
+                "curl command failed: {}",
                 String::from_utf8_lossy(&output.stderr)
             ));
         }
 
-        let branches: Vec<String> = String::from_utf8(output.stdout)?
-            .lines()
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
+        Ok(String::from_utf8(output.stdout)?)
+    }
+
+    /// Make a POST request to GitHub API
+    async fn curl_post(&self, url: &str, json_data: &str) -> Result<String> {
+        let output = Command::new("curl")
+            .args([
+                "-s",
+                "-X",
+                "POST",
+                "-H",
+                &format!("Authorization: Bearer {}", self.token),
+                "-H",
+                "Accept: application/vnd.github+json",
+                "-H",
+                "Content-Type: application/json",
+                "-H",
+                "User-Agent: jr-cli",
+                "-d",
+                json_data,
+                url,
+            ])
+            .output()
+            .await
+            .context("Failed to execute curl command")?;
+
+        if !output.status.success() {
+            return Err(anyhow!(
+                "curl command failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+
+        Ok(String::from_utf8(output.stdout)?)
+    }
+
+    /// Make a PATCH request to GitHub API
+    async fn curl_patch(&self, url: &str, json_data: &str) -> Result<String> {
+        let output = Command::new("curl")
+            .args([
+                "-s",
+                "-X",
+                "PATCH",
+                "-H",
+                &format!("Authorization: Bearer {}", self.token),
+                "-H",
+                "Accept: application/vnd.github+json",
+                "-H",
+                "Content-Type: application/json",
+                "-H",
+                "User-Agent: jr-cli",
+                "-d",
+                json_data,
+                url,
+            ])
+            .output()
+            .await
+            .context("Failed to execute curl command")?;
+
+        if !output.status.success() {
+            return Err(anyhow!(
+                "curl command failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+
+        Ok(String::from_utf8(output.stdout)?)
+    }
+
+    /// Make a DELETE request to GitHub API
+    async fn curl_delete(&self, url: &str) -> Result<()> {
+        let output = Command::new("curl")
+            .args([
+                "-s",
+                "-X",
+                "DELETE",
+                "-H",
+                &format!("Authorization: Bearer {}", self.token),
+                "-H",
+                "Accept: application/vnd.github+json",
+                "-H",
+                "User-Agent: jr-cli",
+                url,
+            ])
+            .output()
+            .await
+            .context("Failed to execute curl command")?;
+
+        if !output.status.success() {
+            return Err(anyhow!(
+                "curl command failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Helper to get PR number from branch name
+    async fn get_pr_number(&self, branch: &str) -> Result<Option<u64>> {
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/pulls?head={}:{}&state=all",
+            self.owner, self.repo, self.owner, branch
+        );
+
+        let response = self.curl_get(&url, "application/vnd.github+json").await?;
+        let prs: Vec<PullRequest> = serde_json::from_str(&response)?;
+        Ok(prs.first().map(|pr| pr.number))
+    }
+}
+
+impl GithubOps for RealGithub {
+    async fn find_branches_with_prefix(&self, prefix: &str) -> Result<Vec<String>> {
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/git/matching-refs/heads/{}",
+            self.owner, self.repo, prefix
+        );
+
+        let response = self.curl_get(&url, "application/vnd.github+json").await?;
+        let refs: Vec<GitRef> = serde_json::from_str(&response)?;
+
+        let branches = refs
+            .into_iter()
+            .map(|r| {
+                r.ref_name
+                    .strip_prefix("refs/heads/")
+                    .unwrap_or(&r.ref_name)
+                    .to_string()
+            })
             .collect();
 
         Ok(branches)
     }
 
     async fn pr_is_open(&self, pr_branch: &str) -> Result<bool> {
-        let output = Command::new("gh")
-            .args(["pr", "view", pr_branch, "--json", "state", "--jq", ".state"])
-            .output()
-            .await
-            .context("Failed to execute gh command")?;
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/pulls?head={}:{}&state=open",
+            self.owner, self.repo, self.owner, pr_branch
+        );
 
-        if !output.status.success() {
-            // PR doesn't exist
-            return Ok(false);
+        let response = self.curl_get(&url, "application/vnd.github+json").await;
+        match response {
+            Ok(resp) => {
+                let prs: Vec<PullRequest> = serde_json::from_str(&resp)?;
+                Ok(!prs.is_empty())
+            }
+            Err(_) => Ok(false),
         }
-
-        let state = String::from_utf8(output.stdout)?.trim().to_string();
-        Ok(state == "OPEN")
     }
 
     async fn pr_url(&self, pr_branch: &str) -> Result<Option<String>> {
-        let output = Command::new("gh")
-            .args(["pr", "view", pr_branch, "--json", "url", "--jq", ".url"])
-            .output()
-            .await
-            .context("Failed to execute gh command")?;
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/pulls?head={}:{}&state=all",
+            self.owner, self.repo, self.owner, pr_branch
+        );
 
-        if !output.status.success() {
-            // PR doesn't exist
-            return Ok(None);
+        let response = self.curl_get(&url, "application/vnd.github+json").await;
+        match response {
+            Ok(resp) => {
+                let prs: Vec<PullRequest> = serde_json::from_str(&resp)?;
+                Ok(prs.first().map(|pr| pr.html_url.clone()))
+            }
+            Err(_) => Ok(None),
         }
-
-        let url = String::from_utf8(output.stdout)?.trim().to_string();
-        Ok(Some(url))
     }
 
     async fn pr_create(
@@ -116,99 +326,66 @@ impl GithubOps for RealGithub {
         title: &str,
         body: &str,
     ) -> Result<String> {
-        let output = Command::new("gh")
-            .args([
-                "pr",
-                "create",
-                "--head",
-                pr_branch,
-                "--base",
-                base_branch,
-                "--draft",
-                "--title",
-                title,
-                "--body",
-                body,
-            ])
-            .output()
-            .await
-            .context("Failed to execute gh command")?;
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/pulls",
+            self.owner, self.repo
+        );
 
-        if !output.status.success() {
-            return Err(anyhow!(
-                "gh command failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            ));
-        }
+        let request_body = CreatePullRequest {
+            title: title.to_string(),
+            body: body.to_string(),
+            head: pr_branch.to_string(),
+            base: base_branch.to_string(),
+            draft: true,
+        };
 
-        // gh pr create outputs the PR URL to stdout
-        Ok(String::from_utf8(output.stdout)?.trim().to_string())
+        let json_data = serde_json::to_string(&request_body)?;
+        let response = self.curl_post(&url, &json_data).await?;
+        let pr: PullRequest = serde_json::from_str(&response)?;
+        Ok(pr.html_url)
     }
 
     async fn pr_edit(&self, pr_branch: &str, base_branch: &str) -> Result<String> {
-        let output = Command::new("gh")
-            .args(["pr", "edit", pr_branch, "--base", base_branch])
-            .output()
-            .await
-            .context("Failed to execute gh command")?;
+        let pr_number = self
+            .get_pr_number(pr_branch)
+            .await?
+            .context("PR not found for branch")?;
 
-        if !output.status.success() {
-            return Err(anyhow!(
-                "gh command failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            ));
-        }
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/pulls/{}",
+            self.owner, self.repo, pr_number
+        );
 
-        // Get the PR URL after editing
-        let url_output = Command::new("gh")
-            .args(["pr", "view", pr_branch, "--json", "url", "--jq", ".url"])
-            .output()
-            .await
-            .context("Failed to execute gh command")?;
+        let request_body = UpdatePullRequest {
+            base: base_branch.to_string(),
+        };
 
-        if !url_output.status.success() {
-            return Err(anyhow!(
-                "gh command failed: {}",
-                String::from_utf8_lossy(&url_output.stderr)
-            ));
-        }
-
-        Ok(String::from_utf8(url_output.stdout)?.trim().to_string())
+        let json_data = serde_json::to_string(&request_body)?;
+        let response = self.curl_patch(&url, &json_data).await?;
+        let pr: PullRequest = serde_json::from_str(&response)?;
+        Ok(pr.html_url)
     }
 
     async fn pr_diff(&self, pr_branch: &str) -> Result<String> {
-        let output = Command::new("gh")
-            .args(["pr", "diff", pr_branch])
-            .output()
-            .await
-            .context("Failed to execute gh command")?;
+        let pr_number = self
+            .get_pr_number(pr_branch)
+            .await?
+            .context("PR not found for branch")?;
 
-        if !output.status.success() {
-            return Err(anyhow!(
-                "gh command failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            ));
-        }
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/pulls/{}",
+            self.owner, self.repo, pr_number
+        );
 
-        Ok(String::from_utf8(output.stdout)?.trim().to_string())
+        self.curl_get(&url, "application/vnd.github.diff").await
     }
 
     async fn delete_branch(&self, branch: &str) -> Result<()> {
-        let api_path = format!("/repos/:owner/:repo/git/refs/heads/{}", branch);
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/git/refs/heads/{}",
+            self.owner, self.repo, branch
+        );
 
-        let output = Command::new("gh")
-            .args(["api", "-X", "DELETE", &api_path])
-            .output()
-            .await
-            .context("Failed to execute gh command")?;
-
-        if !output.status.success() {
-            return Err(anyhow!(
-                "gh command failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            ));
-        }
-
-        Ok(())
+        self.curl_delete(&url).await
     }
 }
