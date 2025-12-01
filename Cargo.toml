@@ -10,7 +10,6 @@ doctest = false
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
 colored = "3.0"
-dialoguer = "0.11"
 futures-util = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
