@@ -4,6 +4,7 @@
 //!
 //! - [`git`]: Low-level Git operations (tree parsing, commit creation, branch updates, pushing)
 //! - [`github`]: GitHub PR management via GitHub CLI (search, create, update PRs)
+//! - [`github_curl`]: Curl-based HTTP client for making GitHub API requests
 //! - [`jujutsu`]: Jujutsu operations for extracting commit and change IDs
 //!
 //! Each submodule provides trait-based abstractions with real and mock implementations
@@ -11,4 +12,5 @@
 
 pub mod git;
 pub mod github;
+pub mod github_curl;
 pub mod jujutsu;

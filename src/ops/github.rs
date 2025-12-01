@@ -2,12 +2,12 @@
 
 use anyhow::Context;
 use anyhow::Result;
-use anyhow::anyhow;
 #[cfg(test)]
 use mockall::automock;
 use serde::Deserialize;
 use serde::Serialize;
-use tokio::process::Command;
+
+use super::github_curl::GithubCurlClient;
 
 // -----------------------------------------------------------------------------
 // GithubOps trait
@@ -72,20 +72,12 @@ struct UpdatePullRequest {
     base: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct GitHubError {
-    message: String,
-    #[serde(default)]
-    #[allow(dead_code)]
-    documentation_url: Option<String>,
-}
-
 // -----------------------------------------------------------------------------
 // RealGithub
 
 /// Real implementation that makes HTTP requests to GitHub API via curl
 pub struct RealGithub {
-    token: String,
+    http_client: GithubCurlClient,
     owner: String,
     repo: String,
 }
@@ -93,8 +85,13 @@ pub struct RealGithub {
 impl RealGithub {
     pub fn new(token: String) -> Result<Self> {
         let (owner, repo) = Self::detect_owner_and_repo()?;
+        let http_client = GithubCurlClient::new(token);
 
-        Ok(Self { token, owner, repo })
+        Ok(Self {
+            http_client,
+            owner,
+            repo,
+        })
     }
 
     /// Detect owner and repo from git remote URL
@@ -136,204 +133,6 @@ impl RealGithub {
 
         Ok((owner, repo))
     }
-
-    /// Make a GET request to GitHub API
-    async fn curl_get(&self, url: &str, accept: &str) -> Result<String> {
-        let output = Command::new("curl")
-            .args([
-                "-s",
-                "-w",
-                "\n%{http_code}",
-                "-H",
-                &format!("Authorization: Bearer {}", self.token),
-                "-H",
-                &format!("Accept: {}", accept),
-                "-H",
-                "User-Agent: jr-cli",
-                url,
-            ])
-            .output()
-            .await
-            .context("Failed to execute curl command")?;
-
-        if !output.status.success() {
-            return Err(anyhow!(
-                "curl command failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            ));
-        }
-
-        let output_str = String::from_utf8(output.stdout)?;
-        let mut lines: Vec<&str> = output_str.rsplitn(2, '\n').collect();
-        lines.reverse();
-
-        let response = lines.first().unwrap_or(&"").to_string();
-        let status_code = lines
-            .get(1)
-            .and_then(|s| s.parse::<u16>().ok())
-            .unwrap_or(0);
-
-        // Check HTTP status code
-        if status_code >= 400 {
-            // Try to parse error message from response
-            if let Ok(error) = serde_json::from_str::<GitHubError>(&response) {
-                return Err(anyhow!("GitHub API error: {}", error.message));
-            }
-            return Err(anyhow!(
-                "GitHub API request failed with status {}: {}",
-                status_code,
-                response
-            ));
-        }
-
-        Ok(response)
-    }
-
-    /// Make a POST request to GitHub API
-    async fn curl_post(&self, url: &str, json_data: &str) -> Result<String> {
-        let output = Command::new("curl")
-            .args([
-                "-s",
-                "-w",
-                "\n%{http_code}",
-                "-X",
-                "POST",
-                "-H",
-                &format!("Authorization: Bearer {}", self.token),
-                "-H",
-                "Accept: application/vnd.github+json",
-                "-H",
-                "Content-Type: application/json",
-                "-H",
-                "User-Agent: jr-cli",
-                "-d",
-                json_data,
-                url,
-            ])
-            .output()
-            .await
-            .context("Failed to execute curl command")?;
-
-        if !output.status.success() {
-            return Err(anyhow!(
-                "curl command failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            ));
-        }
-
-        let output_str = String::from_utf8(output.stdout)?;
-        let mut lines: Vec<&str> = output_str.rsplitn(2, '\n').collect();
-        lines.reverse();
-
-        let response = lines.first().unwrap_or(&"").to_string();
-        let status_code = lines
-            .get(1)
-            .and_then(|s| s.parse::<u16>().ok())
-            .unwrap_or(0);
-
-        // Check HTTP status code
-        if status_code >= 400 {
-            // Try to parse error message from response
-            if let Ok(error) = serde_json::from_str::<GitHubError>(&response) {
-                return Err(anyhow!("GitHub API error: {}", error.message));
-            }
-            return Err(anyhow!(
-                "GitHub API request failed with status {}: {}",
-                status_code,
-                response
-            ));
-        }
-
-        Ok(response)
-    }
-
-    /// Make a PATCH request to GitHub API
-    async fn curl_patch(&self, url: &str, json_data: &str) -> Result<String> {
-        let output = Command::new("curl")
-            .args([
-                "-s",
-                "-w",
-                "\n%{http_code}",
-                "-X",
-                "PATCH",
-                "-H",
-                &format!("Authorization: Bearer {}", self.token),
-                "-H",
-                "Accept: application/vnd.github+json",
-                "-H",
-                "Content-Type: application/json",
-                "-H",
-                "User-Agent: jr-cli",
-                "-d",
-                json_data,
-                url,
-            ])
-            .output()
-            .await
-            .context("Failed to execute curl command")?;
-
-        if !output.status.success() {
-            return Err(anyhow!(
-                "curl command failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            ));
-        }
-
-        let output_str = String::from_utf8(output.stdout)?;
-        let mut lines: Vec<&str> = output_str.rsplitn(2, '\n').collect();
-        lines.reverse();
-
-        let response = lines.first().unwrap_or(&"").to_string();
-        let status_code = lines
-            .get(1)
-            .and_then(|s| s.parse::<u16>().ok())
-            .unwrap_or(0);
-
-        // Check HTTP status code
-        if status_code >= 400 {
-            // Try to parse error message from response
-            if let Ok(error) = serde_json::from_str::<GitHubError>(&response) {
-                return Err(anyhow!("GitHub API error: {}", error.message));
-            }
-            return Err(anyhow!(
-                "GitHub API request failed with status {}: {}",
-                status_code,
-                response
-            ));
-        }
-
-        Ok(response)
-    }
-
-    /// Make a DELETE request to GitHub API
-    async fn curl_delete(&self, url: &str) -> Result<()> {
-        let output = Command::new("curl")
-            .args([
-                "-s",
-                "-X",
-                "DELETE",
-                "-H",
-                &format!("Authorization: Bearer {}", self.token),
-                "-H",
-                "Accept: application/vnd.github+json",
-                "-H",
-                "User-Agent: jr-cli",
-                url,
-            ])
-            .output()
-            .await
-            .context("Failed to execute curl command")?;
-
-        if !output.status.success() {
-            return Err(anyhow!(
-                "curl command failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            ));
-        }
-
-        Ok(())
-    }
-
     /// Helper to get PR number from branch name
     async fn get_pr_number(&self, branch: &str) -> Result<Option<u64>> {
         let url = format!(
@@ -341,7 +140,10 @@ impl RealGithub {
             self.owner, self.repo, self.owner, branch
         );
 
-        let response = self.curl_get(&url, "application/vnd.github+json").await?;
+        let response = self
+            .http_client
+            .get(&url, "application/vnd.github+json")
+            .await?;
         let prs: Vec<PullRequest> = serde_json::from_str(&response)?;
         Ok(prs.first().map(|pr| pr.number))
     }
@@ -354,7 +156,10 @@ impl GithubOps for RealGithub {
             self.owner, self.repo, prefix
         );
 
-        let response = self.curl_get(&url, "application/vnd.github+json").await?;
+        let response = self
+            .http_client
+            .get(&url, "application/vnd.github+json")
+            .await?;
         let refs: Vec<GitRef> = serde_json::from_str(&response)?;
 
         let branches = refs
@@ -376,7 +181,10 @@ impl GithubOps for RealGithub {
             self.owner, self.repo, self.owner, pr_branch
         );
 
-        let response = self.curl_get(&url, "application/vnd.github+json").await;
+        let response = self
+            .http_client
+            .get(&url, "application/vnd.github+json")
+            .await;
         match response {
             Ok(resp) => {
                 let prs: Vec<PullRequest> = serde_json::from_str(&resp)?;
@@ -392,7 +200,10 @@ impl GithubOps for RealGithub {
             self.owner, self.repo, self.owner, pr_branch
         );
 
-        let response = self.curl_get(&url, "application/vnd.github+json").await;
+        let response = self
+            .http_client
+            .get(&url, "application/vnd.github+json")
+            .await;
         match response {
             Ok(resp) => {
                 let prs: Vec<PullRequest> = serde_json::from_str(&resp)?;
@@ -423,7 +234,7 @@ impl GithubOps for RealGithub {
         };
 
         let json_data = serde_json::to_string(&request_body)?;
-        let response = self.curl_post(&url, &json_data).await?;
+        let response = self.http_client.post(&url, &json_data).await?;
         let pr: PullRequest = serde_json::from_str(&response)?;
         Ok(pr.html_url)
     }
@@ -444,7 +255,7 @@ impl GithubOps for RealGithub {
         };
 
         let json_data = serde_json::to_string(&request_body)?;
-        let response = self.curl_patch(&url, &json_data).await?;
+        let response = self.http_client.patch(&url, &json_data).await?;
         let pr: PullRequest = serde_json::from_str(&response)?;
         Ok(pr.html_url)
     }
@@ -460,7 +271,9 @@ impl GithubOps for RealGithub {
             self.owner, self.repo, pr_number
         );
 
-        self.curl_get(&url, "application/vnd.github.diff").await
+        self.http_client
+            .get(&url, "application/vnd.github.diff")
+            .await
     }
 
     async fn delete_branch(&self, branch: &str) -> Result<()> {
@@ -469,6 +282,6 @@ impl GithubOps for RealGithub {
             self.owner, self.repo, branch
         );
 
-        self.curl_delete(&url).await
+        self.http_client.delete(&url).await
     }
 }
