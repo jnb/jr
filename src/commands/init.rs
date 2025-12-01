@@ -1,9 +1,3 @@
-use std::fs::OpenOptions;
-use std::io::BufRead;
-use std::io::BufReader;
-use std::io::Write as _;
-use std::path::PathBuf;
-
 use anyhow::Result;
 use dialoguer::Input;
 
@@ -31,58 +25,9 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         // Save the config
         new_config.save()?;
 
-        writeln!(stdout, "Configuration saved to .jr.yaml")?;
-
-        // Add to .git/info/exclude if not already present
-        self.add_to_git_exclude()?;
+        writeln!(stdout, "Configuration saved to .git/config")?;
 
         Ok(())
-    }
-
-    fn add_to_git_exclude(&self) -> Result<()> {
-        let repo_root = Self::get_repo_root()?;
-        let exclude_path = repo_root.join(".git/info/exclude");
-
-        // Ensure the .git/info directory exists
-        if let Some(parent) = exclude_path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-
-        // Check if .jr.yaml is already in exclude
-        let pattern = "/.jr.yaml";
-        let already_excluded = if exclude_path.exists() {
-            let file = std::fs::File::open(&exclude_path)?;
-            let reader = BufReader::new(file);
-            reader
-                .lines()
-                .any(|line| line.map(|l| l.trim() == pattern).unwrap_or(false))
-        } else {
-            false
-        };
-
-        // Add to exclude if not already present
-        if !already_excluded {
-            let mut file = OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&exclude_path)?;
-            writeln!(file, "{}", pattern)?;
-        }
-
-        Ok(())
-    }
-
-    fn get_repo_root() -> Result<PathBuf> {
-        let output = std::process::Command::new("git")
-            .args(["rev-parse", "--show-toplevel"])
-            .output()?;
-
-        if !output.status.success() {
-            anyhow::bail!("Not in a git repository");
-        }
-
-        let path = String::from_utf8(output.stdout)?.trim().to_string();
-        Ok(PathBuf::from(path))
     }
 }
 

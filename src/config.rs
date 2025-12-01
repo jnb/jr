@@ -1,38 +1,41 @@
-use std::path::PathBuf;
-
 use anyhow::Result;
-use serde::Deserialize;
-use serde::Serialize;
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone)]
 pub struct Config {
     pub github_branch_prefix: String,
 }
 
 impl Config {
-    /// Load config from <repo_root>/.jr.yaml
+    /// Load config from .git/config
     pub fn load() -> Result<Self> {
-        let config_path = Self::config_path()?;
+        let output = std::process::Command::new("git")
+            .args(["config", "--get", "jr.githubBranchPrefix"])
+            .output()?;
 
-        if !config_path.exists() {
-            anyhow::bail!(
-                "Config file not found at {}. Run 'jr init' to create one.",
-                config_path.display()
-            );
+        if !output.status.success() {
+            anyhow::bail!("Config not found in .git/config. Run 'jr init' to create one.");
         }
 
-        let contents = std::fs::read_to_string(&config_path)?;
-        let config = serde_yml::from_str::<Config>(&contents)?;
+        let github_branch_prefix = String::from_utf8(output.stdout)?.trim().to_string();
 
-        Ok(config)
+        Ok(Self {
+            github_branch_prefix,
+        })
     }
 
-    /// Save config to <repo_root>/.jr.yaml
+    /// Save config to .git/config
     pub fn save(&self) -> Result<()> {
-        let config_path = Self::config_path()?;
+        let output = std::process::Command::new("git")
+            .args([
+                "config",
+                "jr.githubBranchPrefix",
+                &self.github_branch_prefix,
+            ])
+            .output()?;
 
-        let contents = serde_yml::to_string(self)?;
-        std::fs::write(&config_path, contents)?;
+        if !output.status.success() {
+            anyhow::bail!("Failed to save config to .git/config");
+        }
 
         Ok(())
     }
@@ -49,26 +52,6 @@ impl Config {
         Self {
             github_branch_prefix: "test/".to_string(),
         }
-    }
-
-    /// Get the config file path (<repo_root>/.jr.yaml)
-    fn config_path() -> Result<PathBuf> {
-        let repo_root = Self::repo_root()?;
-        Ok(repo_root.join(".jr.yaml"))
-    }
-
-    /// Find the git repository root
-    fn repo_root() -> Result<PathBuf> {
-        let output = std::process::Command::new("git")
-            .args(["rev-parse", "--show-toplevel"])
-            .output()?;
-
-        if !output.status.success() {
-            anyhow::bail!("Not in a git repository");
-        }
-
-        let path = String::from_utf8(output.stdout)?.trim().to_string();
-        Ok(PathBuf::from(path))
     }
 
     /// Default GitHub branch prefix based on current user
