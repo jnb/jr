@@ -6,6 +6,10 @@ use jr::Config;
 use jr::ops::git::RealGit;
 use jr::ops::github::RealGithub;
 use jr::ops::jujutsu::RealJujutsu;
+use tracing::level_filters::LevelFilter;
+use tracing_subscriber::Layer as _;
+use tracing_subscriber::layer::SubscriberExt as _;
+use tracing_subscriber::util::SubscriberInitExt as _;
 
 #[derive(Parser)]
 #[command(name = "jr")]
@@ -46,6 +50,8 @@ pub enum Commands {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    setup_logging()?;
+
     let cli = Cli::parse();
 
     // Handle Init command specially - it creates the config
@@ -81,5 +87,18 @@ async fn main() -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+fn setup_logging() -> anyhow::Result<()> {
+    let timer = tracing_subscriber::fmt::time::ChronoLocal::new("%H:%M:%S%.3f".into());
+    let format = tracing_subscriber::fmt::format().with_timer(timer);
+    let filter = tracing_subscriber::EnvFilter::builder()
+        .with_default_directive(LevelFilter::INFO.into())
+        .from_env()?;
+    let subscriber = tracing_subscriber::fmt::layer()
+        .event_format(format)
+        .with_filter(filter);
+    tracing_subscriber::registry().with(subscriber).init();
     Ok(())
 }

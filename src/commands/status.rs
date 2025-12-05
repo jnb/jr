@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use anyhow::Result;
 use colored::Colorize;
 use futures_util::future::join_all;
+use log::debug;
 
 use crate::App;
 use crate::app::CHANGE_ID_LENGTH;
@@ -223,6 +224,8 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
                                         "✓" // Up to date
                                     }
                                 } else {
+                                    debug!("local_diff: {local_diff}");
+                                    debug!("pr_diff {pr_diff}");
                                     "✗" // Has local changes
                                 }
                             } else {
