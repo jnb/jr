@@ -3,6 +3,7 @@ pub mod ops;
 mod app;
 pub mod commands;
 pub mod config;
+pub mod diff_utils;
 
 // Re-export App and Config from modules
 pub use app::App;

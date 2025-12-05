@@ -3,6 +3,7 @@ use anyhow::Result;
 
 use crate::App;
 use crate::app::CHANGE_ID_LENGTH;
+use crate::diff_utils::normalize_diff;
 use crate::ops::git::GitOps;
 use crate::ops::github::GithubOps;
 use crate::ops::jujutsu::JujutsuOps;
@@ -46,7 +47,11 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         let local_change_diff = self.git.get_commit_diff(&commit.commit_id).await?;
         let pr_cumulative_diff = self.gh.pr_diff(&pr_branch).await?;
 
-        if local_change_diff != pr_cumulative_diff {
+        // Normalize both diffs to ignore differences in index line hash lengths
+        let normalized_local = normalize_diff(&local_change_diff);
+        let normalized_pr = normalize_diff(&pr_cumulative_diff);
+
+        if normalized_local != normalized_pr {
             return Err(anyhow::anyhow!(
                 "Cannot restack: commit has local changes. Use 'jr update -m \"<message>\"' to update with your changes."
             ));
