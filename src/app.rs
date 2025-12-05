@@ -224,6 +224,7 @@ pub(crate) mod tests {
                 .returning(|_| Ok("M\tsrc/main.rs".to_string()));
             mock.expect_update_branch().returning(|_, _| Ok(()));
             mock.expect_push_branch().returning(|_| Ok(()));
+            mock.expect_delete_local_branch().returning(|_| Ok(()));
             mock
         }
 

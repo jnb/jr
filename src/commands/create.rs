@@ -65,6 +65,9 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         self.git.push_branch(&pr_branch).await?;
         writeln!(stdout, "Pushed PR branch {}", pr_branch)?;
 
+        self.git.delete_local_branch(&pr_branch).await?;
+        writeln!(stdout, "Deleted local branch {}", pr_branch)?;
+
         let pr_url = self
             .gh
             .pr_create(&pr_branch, &base_branch, pr_title, pr_body)

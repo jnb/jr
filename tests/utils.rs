@@ -4,7 +4,7 @@ use std::process::Stdio;
 use tokio::process::Command;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::Layer as _;
-use tracing_subscriber::fmt::format::FmtSpan;
+// use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
 
@@ -179,7 +179,7 @@ pub fn setup_logging() -> anyhow::Result<()> {
         .from_env()?;
     let subscriber = tracing_subscriber::fmt::layer()
         .event_format(format)
-        .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
+        // .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
         .with_filter(filter);
     tracing_subscriber::registry().with(subscriber).init();
     Ok(())

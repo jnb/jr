@@ -4,6 +4,7 @@ use anyhow::Result;
 use colored::Colorize;
 use futures_util::future::join_all;
 use log::debug;
+use regex::Regex;
 
 use crate::App;
 use crate::app::CHANGE_ID_LENGTH;
@@ -11,6 +12,17 @@ use crate::ops::git::GitOps;
 use crate::ops::git::{self};
 use crate::ops::github::GithubOps;
 use crate::ops::jujutsu::JujutsuOps;
+
+/// Normalize a diff by removing the `index` lines which can vary in hash abbreviation length
+/// between git and GitHub API responses.
+/// The index line format is: "index <hash>..<hash> <mode>"
+fn normalize_diff(diff: &str) -> String {
+    let index_line_re = Regex::new(r"^index [0-9a-f]+\.\.[0-9a-f]+( [0-9]+)?$").unwrap();
+    diff.lines()
+        .filter(|line| !index_line_re.is_match(line))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
 
 impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
     pub async fn cmd_status(
@@ -216,7 +228,11 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
                                     false
                                 };
 
-                                if &local_diff == pr_diff {
+                                // Normalize both diffs to ignore differences in index line hash lengths
+                                let normalized_local = normalize_diff(&local_diff);
+                                let normalized_pr = normalize_diff(pr_diff);
+
+                                if normalized_local == normalized_pr {
                                     // Diffs match - check if parent changed or base moved
                                     if parent_pr_outdated || base_has_moved {
                                         "↻" // Needs restack (parent changed or base moved)
@@ -294,10 +310,14 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
                 let parent_commit = self.jj.get_commit(&parent_change_id).await?;
                 let parent_local_diff = self.git.get_commit_diff(&parent_commit.commit_id).await?;
 
-                if let Some(parent_pr_diff) = pr_diffs.get(&parent_branch)
-                    && &parent_local_diff != parent_pr_diff
-                {
-                    return Ok(true); // Parent has local changes
+                if let Some(parent_pr_diff) = pr_diffs.get(&parent_branch) {
+                    // Normalize both diffs to ignore differences in index line hash lengths
+                    let normalized_parent_local = normalize_diff(&parent_local_diff);
+                    let normalized_parent_pr = normalize_diff(parent_pr_diff);
+
+                    if normalized_parent_local != normalized_parent_pr {
+                        return Ok(true); // Parent has local changes
+                    }
                 }
 
                 // Check if parent's base has moved
@@ -482,5 +502,63 @@ mod tests {
         let mut stderr = Vec::new();
         let result = app.cmd_status(&mut stdout, &mut stderr).await;
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_normalize_diff() {
+        // Test that diffs with different index line hash lengths are normalized to be equal
+        let diff_10_char_hash = "diff --git a/foo b/foo\n\
+index 0123456789..0123456789 100644\n\
+--- a/foo\n\
++++ b/foo\n\
+@@ -1 +1 @@\n\
+-old content\n\
++new content";
+
+        let diff_11_char_hash = "diff --git a/foo b/foo\n\
+index 0123456789a..0123456789a 100644\n\
+--- a/foo\n\
++++ b/foo\n\
+@@ -1 +1 @@\n\
+-old content\n\
++new content";
+
+        let normalized_10 = super::normalize_diff(diff_10_char_hash);
+        let normalized_11 = super::normalize_diff(diff_11_char_hash);
+
+        // The normalized diffs should be equal
+        assert_eq!(normalized_10, normalized_11);
+
+        // The normalized diff should not contain the index line
+        assert!(!normalized_10.contains("index "));
+        assert!(!normalized_11.contains("index "));
+
+        // The normalized diff should still contain the actual content
+        assert!(normalized_10.contains("diff --git a/foo b/foo"));
+        assert!(normalized_10.contains("--- a/foo"));
+        assert!(normalized_10.contains("+++ b/foo"));
+        assert!(normalized_10.contains("-old content"));
+        assert!(normalized_10.contains("+new content"));
+    }
+
+    #[test]
+    fn test_normalize_diff_preserves_code_with_index_keyword() {
+        // Test that lines containing "index " in actual code are preserved
+        let diff_with_index_code = "diff --git a/src/main.rs b/src/main.rs\n\
+index abc123..def456 100644\n\
+--- a/src/main.rs\n\
++++ b/src/main.rs\n\
+@@ -1,2 +1,2 @@\n\
+-let index = 0;\n\
++let index = 1;";
+
+        let normalized = super::normalize_diff(diff_with_index_code);
+
+        // The git index line should be removed
+        assert!(!normalized.contains("index abc123..def456"));
+
+        // But the code line with "index " should be preserved
+        assert!(normalized.contains("let index = 0;"));
+        assert!(normalized.contains("let index = 1;"));
     }
 }

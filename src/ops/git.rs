@@ -26,6 +26,7 @@ pub trait GitOps {
     ) -> Result<CommitId>;
     async fn update_branch(&self, branch: &str, commit_id: &CommitId) -> Result<()>;
     async fn push_branch(&self, branch: &str) -> Result<()>;
+    async fn delete_local_branch(&self, branch: &str) -> Result<()>;
 
     /// Check if `commit` is an ancestor of `descendant`.
     /// Returns true if `commit` is reachable from `descendant` by following parent links.
@@ -165,6 +166,23 @@ impl GitOps for RealGit {
         let refspec = format!("refs/heads/{}:refs/heads/{}", branch, branch);
         let output = Command::new("git")
             .args(["push", "-u", "origin", &refspec])
+            .output()
+            .await
+            .context("Failed to execute git command")?;
+
+        if !output.status.success() {
+            return Err(anyhow!(
+                "git command failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+
+        Ok(())
+    }
+
+    async fn delete_local_branch(&self, branch: &str) -> Result<()> {
+        let output = Command::new("git")
+            .args(["update-ref", "-d", &format!("refs/heads/{}", branch)])
             .output()
             .await
             .context("Failed to execute git command")?;

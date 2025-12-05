@@ -104,6 +104,9 @@ impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
         self.git.push_branch(&pr_branch).await?;
         writeln!(stdout, "Pushed PR branch {}", pr_branch)?;
 
+        self.git.delete_local_branch(&pr_branch).await?;
+        writeln!(stdout, "Deleted local branch {}", pr_branch)?;
+
         // Update PR base if needed
         let pr_url = if self.gh.pr_is_open(&pr_branch).await? {
             let url = self.gh.pr_edit(&pr_branch, &base_branch).await?;
@@ -196,6 +199,7 @@ mod tests {
             .returning(|_, _, _| Ok(git::CommitId("new_commit_obj".to_string())));
         mock_git.expect_update_branch().returning(|_, _| Ok(()));
         mock_git.expect_push_branch().returning(|_| Ok(()));
+        mock_git.expect_delete_local_branch().returning(|_| Ok(()));
 
         let mut mock_gh = MockGithubOps::new();
         mock_gh
