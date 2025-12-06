@@ -16,7 +16,6 @@ mod utils;
 
 use std::sync::LazyLock;
 
-use jr::ops::github::GithubOps as _;
 use jr::ops::github::RealGithub;
 use log::debug;
 use serde::Deserialize;
@@ -155,12 +154,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
         TEST_CONFIG.github_token.clone(),
     );
     let github = jr::ops::github::RealGithub::new(TEST_CONFIG.github_token.clone())?;
-    let app = jr::App::new(
-        config,
-        jr::ops::jujutsu::RealJujutsu,
-        jr::ops::git::RealGit,
-        github,
-    );
+    let app = jr::App::new(config, github);
 
     let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"

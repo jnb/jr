@@ -5,38 +5,10 @@ use std::fmt::Display;
 use anyhow::Context;
 use anyhow::Result;
 use anyhow::anyhow;
-#[cfg(test)]
-use mockall::automock;
 use tokio::process::Command;
 
-// -----------------------------------------------------------------------------
-// GitOps trait
-
 /// Operations for interacting with Git
-#[cfg_attr(test, automock)]
-pub trait GitOps {
-    async fn get_tree(&self, commit_id: &CommitId) -> Result<String>;
-    async fn get_branch_tip(&self, branch: &str) -> Result<CommitId>;
-    async fn commit_tree(&self, tree: &str, parent: &CommitId, message: &str) -> Result<CommitId>;
-    async fn commit_tree_merge(
-        &self,
-        tree: &str,
-        parents: Vec<CommitId>,
-        message: &str,
-    ) -> Result<CommitId>;
-    async fn update_branch(&self, branch: &str, commit_id: &CommitId) -> Result<()>;
-    async fn push_branch(&self, branch: &str) -> Result<()>;
-    async fn delete_local_branch(&self, branch: &str) -> Result<()>;
-
-    /// Check if `commit` is an ancestor of `descendant`.
-    /// Returns true if `commit` is reachable from `descendant` by following parent links.
-    /// In other words, returns true if `descendant` contains all changes from `commit`.
-    async fn is_ancestor(&self, commit: &CommitId, descendant: &CommitId) -> Result<bool>;
-
-    /// Get a canonical representation of the changes introduced by a commit.
-    /// Returns a string representing the diff (file names and status) that can be compared.
-    async fn get_commit_diff(&self, commit_id: &CommitId) -> Result<String>;
-}
+pub struct RealGit;
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct CommitId(pub String);
@@ -47,14 +19,8 @@ impl Display for CommitId {
     }
 }
 
-// -----------------------------------------------------------------------------
-// RealGithub
-
-/// Real implementation that calls the git CLI
-pub struct RealGit;
-
-impl GitOps for RealGit {
-    async fn get_tree(&self, commit_id: &CommitId) -> Result<String> {
+impl RealGit {
+    pub async fn get_tree(&self, commit_id: &CommitId) -> Result<String> {
         let output = Command::new("git")
             .args(["rev-parse", &format!("{}^{{tree}}", commit_id)])
             .output()
@@ -71,7 +37,7 @@ impl GitOps for RealGit {
         Ok(String::from_utf8(output.stdout)?.trim().to_string())
     }
 
-    async fn get_branch_tip(&self, branch: &str) -> Result<CommitId> {
+    pub async fn get_branch_tip(&self, branch: &str) -> Result<CommitId> {
         let output = Command::new("git")
             .args(["rev-parse", &format!("origin/{}", branch)])
             .output()
@@ -90,7 +56,12 @@ impl GitOps for RealGit {
         ))
     }
 
-    async fn commit_tree(&self, tree: &str, parent: &CommitId, message: &str) -> Result<CommitId> {
+    pub async fn commit_tree(
+        &self,
+        tree: &str,
+        parent: &CommitId,
+        message: &str,
+    ) -> Result<CommitId> {
         let output = Command::new("git")
             .args(["commit-tree", tree, "-p", &parent.0, "-m", message])
             .output()
@@ -109,7 +80,7 @@ impl GitOps for RealGit {
         ))
     }
 
-    async fn commit_tree_merge(
+    pub async fn commit_tree_merge(
         &self,
         tree: &str,
         parents: Vec<CommitId>,
@@ -141,7 +112,7 @@ impl GitOps for RealGit {
         ))
     }
 
-    async fn update_branch(&self, branch: &str, commit_id: &CommitId) -> Result<()> {
+    pub async fn update_branch(&self, branch: &str, commit_id: &CommitId) -> Result<()> {
         let output = Command::new("git")
             .args([
                 "update-ref",
@@ -162,7 +133,7 @@ impl GitOps for RealGit {
         Ok(())
     }
 
-    async fn push_branch(&self, branch: &str) -> Result<()> {
+    pub async fn push_branch(&self, branch: &str) -> Result<()> {
         let refspec = format!("refs/heads/{}:refs/heads/{}", branch, branch);
         let output = Command::new("git")
             .args(["push", "-u", "origin", &refspec])
@@ -180,7 +151,7 @@ impl GitOps for RealGit {
         Ok(())
     }
 
-    async fn delete_local_branch(&self, branch: &str) -> Result<()> {
+    pub async fn delete_local_branch(&self, branch: &str) -> Result<()> {
         let output = Command::new("git")
             .args(["update-ref", "-d", &format!("refs/heads/{}", branch)])
             .output()
@@ -197,7 +168,10 @@ impl GitOps for RealGit {
         Ok(())
     }
 
-    async fn is_ancestor(&self, commit: &CommitId, descendant: &CommitId) -> Result<bool> {
+    /// Check if `commit` is an ancestor of `descendant`.
+    /// Returns true if `commit` is reachable from `descendant` by following parent links.
+    /// In other words, returns true if `descendant` contains all changes from `commit`.
+    pub async fn is_ancestor(&self, commit: &CommitId, descendant: &CommitId) -> Result<bool> {
         let output = Command::new("git")
             .args(["merge-base", "--is-ancestor", &commit.0, &descendant.0])
             .output()
@@ -208,7 +182,9 @@ impl GitOps for RealGit {
         Ok(output.status.success())
     }
 
-    async fn get_commit_diff(&self, commit_id: &CommitId) -> Result<String> {
+    /// Get a canonical representation of the changes introduced by a commit.
+    /// Returns a string representing the diff (file names and status) that can be compared.
+    pub async fn get_commit_diff(&self, commit_id: &CommitId) -> Result<String> {
         // Use diff-tree to get the full textual diff introduced by this commit
         // -p: generate patch (full diff with +/- lines)
         // --no-commit-id: don't show the commit ID in output

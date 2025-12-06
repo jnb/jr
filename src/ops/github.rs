@@ -2,46 +2,11 @@
 
 use anyhow::Context;
 use anyhow::Result;
-#[cfg(test)]
-use mockall::automock;
 use serde::Deserialize;
 use serde::Serialize;
 use tracing::instrument;
 
 use super::github_curl::GithubCurlClient;
-
-// -----------------------------------------------------------------------------
-// GithubOps trait
-
-/// Operations for interacting with GitHub
-#[cfg_attr(test, automock)]
-pub trait GithubOps {
-    async fn find_branches_with_prefix(&self, prefix: &str) -> Result<Vec<String>>;
-
-    /// Check if an open PR exists for the branch
-    async fn pr_is_open(&self, branch: &str) -> Result<bool>;
-
-    /// Get the PR URL for a branch, returns None if no PR exists
-    async fn pr_url(&self, branch: &str) -> Result<Option<String>>;
-
-    /// Create a new PR and return the PR URL
-    async fn pr_create(
-        &self,
-        pr_branch: &str,
-        base_branch: &str,
-        title: &str,
-        body: &str,
-    ) -> Result<String>;
-
-    /// Edit an existing PR and return the PR URL
-    async fn pr_edit(&self, pr_branch: &str, base_branch: &str) -> Result<String>;
-
-    /// Get the diff for a PR (cumulative diff from base to head)
-    async fn pr_diff(&self, pr_branch: &str) -> Result<String>;
-
-    /// Delete a remote branch
-    async fn delete_branch(&self, branch: &str) -> Result<()>;
-}
 
 // -----------------------------------------------------------------------------
 // GitHub API types
@@ -73,10 +38,8 @@ struct UpdatePullRequest {
     base: String,
 }
 
-// -----------------------------------------------------------------------------
-// RealGithub
-
-/// Real implementation that makes HTTP requests to GitHub API via curl
+/// Operations for interacting with GitHub.
+/// Makes HTTP requests to GitHub API via curl.
 pub struct RealGithub {
     http_client: GithubCurlClient,
     owner: String,
@@ -150,11 +113,9 @@ impl RealGithub {
         let prs: Vec<PullRequest> = serde_json::from_str(&response)?;
         Ok(prs.first().map(|pr| pr.number))
     }
-}
 
-impl GithubOps for RealGithub {
     #[instrument(skip_all)]
-    async fn find_branches_with_prefix(&self, prefix: &str) -> Result<Vec<String>> {
+    pub async fn find_branches_with_prefix(&self, prefix: &str) -> Result<Vec<String>> {
         let url = format!(
             "https://api.github.com/repos/{}/{}/git/matching-refs/heads/{}",
             self.owner, self.repo, prefix
@@ -179,8 +140,9 @@ impl GithubOps for RealGithub {
         Ok(branches)
     }
 
+    /// Check if an open PR exists for the branch
     #[instrument(skip_all)]
-    async fn pr_is_open(&self, pr_branch: &str) -> Result<bool> {
+    pub async fn pr_is_open(&self, pr_branch: &str) -> Result<bool> {
         let url = format!(
             "https://api.github.com/repos/{}/{}/pulls?head={}:{}&state=open",
             self.owner, self.repo, self.owner, pr_branch
@@ -199,8 +161,9 @@ impl GithubOps for RealGithub {
         }
     }
 
+    /// Get the PR URL for a branch, returns None if no PR exists
     #[instrument(skip_all)]
-    async fn pr_url(&self, pr_branch: &str) -> Result<Option<String>> {
+    pub async fn pr_url(&self, pr_branch: &str) -> Result<Option<String>> {
         let url = format!(
             "https://api.github.com/repos/{}/{}/pulls?head={}:{}&state=all",
             self.owner, self.repo, self.owner, pr_branch
@@ -219,8 +182,9 @@ impl GithubOps for RealGithub {
         }
     }
 
+    /// Create a new PR and return the PR URL
     #[instrument(skip_all)]
-    async fn pr_create(
+    pub async fn pr_create(
         &self,
         pr_branch: &str,
         base_branch: &str,
@@ -246,8 +210,9 @@ impl GithubOps for RealGithub {
         Ok(pr.html_url)
     }
 
+    /// Edit an existing PR and return the PR URL
     #[instrument(skip_all)]
-    async fn pr_edit(&self, pr_branch: &str, base_branch: &str) -> Result<String> {
+    pub async fn pr_edit(&self, pr_branch: &str, base_branch: &str) -> Result<String> {
         let pr_number = self
             .get_pr_number(pr_branch)
             .await?
@@ -268,8 +233,9 @@ impl GithubOps for RealGithub {
         Ok(pr.html_url)
     }
 
+    /// Get the diff for a PR (cumulative diff from base to head)
     #[instrument(skip_all)]
-    async fn pr_diff(&self, pr_branch: &str) -> Result<String> {
+    pub async fn pr_diff(&self, pr_branch: &str) -> Result<String> {
         let pr_number = self
             .get_pr_number(pr_branch)
             .await?
@@ -285,8 +251,9 @@ impl GithubOps for RealGithub {
             .await
     }
 
+    /// Delete a remote branch
     #[instrument(skip_all)]
-    async fn delete_branch(&self, branch: &str) -> Result<()> {
+    pub async fn delete_branch(&self, branch: &str) -> Result<()> {
         let url = format!(
             "https://api.github.com/repos/{}/{}/git/refs/heads/{}",
             self.owner, self.repo, branch

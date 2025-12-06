@@ -1,13 +1,10 @@
+use std::io;
 use std::io::Write;
-use std::io::{self};
 
 use anyhow::Result;
 
 use crate::App;
 use crate::config::Config;
-use crate::ops::git::GitOps;
-use crate::ops::github::GithubOps;
-use crate::ops::jujutsu::JujutsuOps;
 
 fn prompt_with_default(prompt: &str, default: String) -> Result<String> {
     print!("{} [{}]: ", prompt, default);
@@ -24,7 +21,7 @@ fn prompt_with_default(prompt: &str, default: String) -> Result<String> {
     })
 }
 
-impl<J: JujutsuOps, G: GitOps, H: GithubOps> App<J, G, H> {
+impl App {
     pub async fn cmd_init(&self, stdout: &mut impl std::io::Write) -> Result<()> {
         // Try to load existing config or use defaults
         let current_config = Config::load()
