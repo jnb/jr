@@ -52,7 +52,7 @@ impl App {
 
         let new_commit = self
             .git
-            .commit_tree(&tree, &parent, &commit.full_message())
+            .commit_tree(&tree, vec![&parent], &commit.full_message())
             .await?;
         writeln!(stdout, "Created new commit: {}", new_commit)?;
 

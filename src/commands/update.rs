@@ -70,11 +70,7 @@ impl App {
             // Create merge commit with old PR tip and base as parents
             let commit = self
                 .git
-                .commit_tree_merge(
-                    &tree,
-                    vec![old_pr_tip.clone(), base_tip.clone()],
-                    commit_message,
-                )
+                .commit_tree(&tree, vec![&old_pr_tip, &base_tip], commit_message)
                 .await?;
             writeln!(stdout, "Created new merge commit: {}", commit)?;
             commit
@@ -82,7 +78,7 @@ impl App {
             // Tree changed but base hasn't - create regular commit with single parent
             let commit = self
                 .git
-                .commit_tree(&tree, &old_pr_tip, commit_message)
+                .commit_tree(&tree, vec![&old_pr_tip], commit_message)
                 .await?;
             writeln!(stdout, "Created new commit: {}", commit)?;
             commit

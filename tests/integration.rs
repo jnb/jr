@@ -17,7 +17,6 @@ mod utils;
 use std::sync::LazyLock;
 
 use jr::clients::git::GitClient;
-use jr::clients::github::GithubClient;
 use log::debug;
 use serde::Deserialize;
 use tracing::instrument;

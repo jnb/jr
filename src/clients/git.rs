@@ -71,38 +71,13 @@ impl GitClient {
     pub async fn commit_tree(
         &self,
         tree: &str,
-        parent: &CommitId,
-        message: &str,
-    ) -> Result<CommitId> {
-        let output = Command::new("git")
-            .current_dir(&self.path)
-            .args(["commit-tree", tree, "-p", &parent.0, "-m", message])
-            .output()
-            .await
-            .context("Failed to execute git command")?;
-
-        if !output.status.success() {
-            bail!(
-                "git command failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            );
-        }
-
-        Ok(CommitId(
-            String::from_utf8(output.stdout)?.trim().to_string(),
-        ))
-    }
-
-    pub async fn commit_tree_merge(
-        &self,
-        tree: &str,
-        parents: Vec<CommitId>,
+        parents: Vec<&CommitId>,
         message: &str,
     ) -> Result<CommitId> {
         let mut args = vec!["commit-tree".to_string(), tree.to_string()];
         for parent in &parents {
             args.push("-p".to_string());
-            args.push(parent.clone().0);
+            args.push(parent.0.clone());
         }
         args.push("-m".to_string());
         args.push(message.to_string());
