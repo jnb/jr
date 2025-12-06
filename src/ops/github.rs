@@ -4,6 +4,7 @@ use std::path;
 
 use anyhow::Context;
 use anyhow::Result;
+use anyhow::bail;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::process::Command;
@@ -73,7 +74,7 @@ impl GithubClient {
             .context("Failed to get git remote URL")?;
 
         if !output.status.success() {
-            anyhow::bail!("No git remote 'origin' configured");
+            bail!("No git remote 'origin' configured");
         }
 
         let url = String::from_utf8(output.stdout)?.trim().to_string();
@@ -88,7 +89,7 @@ impl GithubClient {
             url.strip_prefix("https://github.com/")
                 .context("Invalid GitHub URL format")?
         } else {
-            anyhow::bail!("Remote URL is not a GitHub URL: {}", url);
+            bail!("Remote URL is not a GitHub URL: {}", url);
         };
 
         let parts = parts.strip_suffix(".git").unwrap_or(parts);

@@ -1,5 +1,6 @@
 use anyhow::Context;
 use anyhow::Result;
+use anyhow::bail;
 
 use crate::App;
 use crate::app::CHANGE_ID_LENGTH;
@@ -49,9 +50,9 @@ impl App {
         let normalized_pr = normalize_diff(&pr_cumulative_diff);
 
         if normalized_local != normalized_pr {
-            return Err(anyhow::anyhow!(
+            bail!(
                 "Cannot restack: commit has local changes. Use 'jr update -m \"<message>\"' to update with your changes."
-            ));
+            );
         }
 
         writeln!(stdout, "Detected pure restack (no changes to this commit)")?;
@@ -121,10 +122,10 @@ impl App {
             )?;
             url
         } else {
-            return Err(anyhow::anyhow!(
+            bail!(
                 "No open PR found for PR branch {}. The PR may have been closed or merged.",
                 pr_branch
-            ));
+            );
         };
 
         writeln!(stdout, "PR URL: {}", pr_url)?;

@@ -1,6 +1,7 @@
 use std::path;
 
 use anyhow::Result;
+use anyhow::anyhow;
 use anyhow::bail;
 
 use crate::config::Config;
@@ -43,10 +44,10 @@ impl App {
             .is_ancestor(&commit.commit_id.0, &trunk_commit)
             .await?
         {
-            return Err(anyhow::anyhow!(
+            bail!(
                 "Cannot create PR: commit {} is an ancestor of trunk. This commit is already merged.",
                 commit.commit_id
-            ));
+            );
         }
 
         Ok(())
@@ -138,15 +139,13 @@ impl App {
 
             // Compare local single commit diff vs cumulative PR diff from GitHub
             let local_diff = self.git.get_commit_diff(&commit_in_stack.commit_id).await?;
-            let pr_diff = pr_diff_result
-                .as_ref()
-                .map_err(|e| anyhow::anyhow!("{}", e))?;
+            let pr_diff = pr_diff_result.as_ref().map_err(|e| anyhow!("{}", e))?;
 
             if &local_diff != pr_diff {
-                return Err(anyhow::anyhow!(
+                bail!(
                     "Cannot update PR: parent PR {} is out of date. Update parent PRs first (starting from the bottom of the stack).",
                     expected_branch
-                ));
+                );
             }
         }
 

@@ -1,6 +1,6 @@
 use anyhow::Context;
 use anyhow::Result;
-use anyhow::anyhow;
+use anyhow::bail;
 use serde::Deserialize;
 use tokio::process::Command;
 
@@ -42,10 +42,10 @@ impl GithubCurlClient {
             .context("Failed to execute curl command")?;
 
         if !output.status.success() {
-            return Err(anyhow!(
+            bail!(
                 "curl command failed: {}",
                 String::from_utf8_lossy(&output.stderr)
-            ));
+            );
         }
 
         self.parse_response(output.stdout)
@@ -77,10 +77,10 @@ impl GithubCurlClient {
             .context("Failed to execute curl command")?;
 
         if !output.status.success() {
-            return Err(anyhow!(
+            bail!(
                 "curl command failed: {}",
                 String::from_utf8_lossy(&output.stderr)
-            ));
+            );
         }
 
         self.parse_response(output.stdout)
@@ -112,10 +112,10 @@ impl GithubCurlClient {
             .context("Failed to execute curl command")?;
 
         if !output.status.success() {
-            return Err(anyhow!(
+            bail!(
                 "curl command failed: {}",
                 String::from_utf8_lossy(&output.stderr)
-            ));
+            );
         }
 
         self.parse_response(output.stdout)
@@ -143,10 +143,10 @@ impl GithubCurlClient {
             .context("Failed to execute curl command")?;
 
         if !output.status.success() {
-            return Err(anyhow!(
+            bail!(
                 "curl command failed: {}",
                 String::from_utf8_lossy(&output.stderr)
-            ));
+            );
         }
 
         self.parse_response(output.stdout)?;
@@ -169,13 +169,13 @@ impl GithubCurlClient {
         if status_code >= 400 {
             // Try to parse error message from response
             if let Ok(error) = serde_json::from_str::<GitHubError>(&response) {
-                return Err(anyhow!("GitHub API error: {}", error.message));
+                bail!("GitHub API error: {}", error.message);
             }
-            return Err(anyhow!(
+            bail!(
                 "GitHub API request failed with status {}: {}",
                 status_code,
                 response
-            ));
+            );
         }
 
         Ok(response)

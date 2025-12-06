@@ -4,7 +4,7 @@ use std::fmt::Display;
 
 use anyhow::Context;
 use anyhow::Result;
-use anyhow::anyhow;
+use anyhow::bail;
 use tokio::process::Command;
 
 // -----------------------------------------------------------------------------
@@ -41,10 +41,10 @@ impl GitClient {
             .context("Failed to execute git command")?;
 
         if !output.status.success() {
-            return Err(anyhow!(
+            bail!(
                 "git command failed: {}",
                 String::from_utf8_lossy(&output.stderr)
-            ));
+            );
         }
 
         Ok(String::from_utf8(output.stdout)?.trim().to_string())
@@ -59,10 +59,10 @@ impl GitClient {
             .context("Failed to execute git command")?;
 
         if !output.status.success() {
-            return Err(anyhow!(
+            bail!(
                 "git command failed: {}",
                 String::from_utf8_lossy(&output.stderr)
-            ));
+            );
         }
 
         Ok(CommitId(
@@ -84,10 +84,10 @@ impl GitClient {
             .context("Failed to execute git command")?;
 
         if !output.status.success() {
-            return Err(anyhow!(
+            bail!(
                 "git command failed: {}",
                 String::from_utf8_lossy(&output.stderr)
-            ));
+            );
         }
 
         Ok(CommitId(
@@ -117,10 +117,10 @@ impl GitClient {
             .context("Failed to execute git command")?;
 
         if !output.status.success() {
-            return Err(anyhow!(
+            bail!(
                 "git command failed: {}",
                 String::from_utf8_lossy(&output.stderr)
-            ));
+            );
         }
 
         Ok(CommitId(
@@ -141,10 +141,10 @@ impl GitClient {
             .context("Failed to execute git command")?;
 
         if !output.status.success() {
-            return Err(anyhow!(
+            bail!(
                 "git command failed: {}",
                 String::from_utf8_lossy(&output.stderr)
-            ));
+            );
         }
 
         Ok(())
@@ -160,10 +160,10 @@ impl GitClient {
             .context("Failed to execute git command")?;
 
         if !output.status.success() {
-            return Err(anyhow!(
+            bail!(
                 "git command failed: {}",
                 String::from_utf8_lossy(&output.stderr)
-            ));
+            );
         }
 
         Ok(())
@@ -178,10 +178,10 @@ impl GitClient {
             .context("Failed to execute git command")?;
 
         if !output.status.success() {
-            return Err(anyhow!(
+            bail!(
                 "git command failed: {}",
                 String::from_utf8_lossy(&output.stderr)
-            ));
+            );
         }
 
         Ok(())
@@ -216,10 +216,10 @@ impl GitClient {
             .context("Failed to execute git command")?;
 
         if !output.status.success() {
-            return Err(anyhow!(
+            bail!(
                 "git command failed: {}",
                 String::from_utf8_lossy(&output.stderr)
-            ));
+            );
         }
 
         // Don't trim - we want to preserve trailing newlines to match GitHub API diff format

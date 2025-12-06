@@ -4,7 +4,7 @@ use std::path;
 
 use anyhow::Context;
 use anyhow::Result;
-use anyhow::anyhow;
+use anyhow::bail;
 use tokio::process::Command;
 
 use crate::ops::git;
@@ -56,20 +56,20 @@ impl JujutsuClient {
             .context("Failed to execute jj command")?;
 
         if !output.status.success() {
-            return Err(anyhow!(
+            bail!(
                 "jj command failed: {}",
                 String::from_utf8_lossy(&output.stderr)
-            ));
+            );
         }
 
         let output_str = String::from_utf8(output.stdout)?.trim().to_string();
         let parts: Vec<&str> = output_str.splitn(4, '|').collect();
 
         if parts.len() != 4 {
-            return Err(anyhow!(
+            bail!(
                 "Unexpected jj output format: expected 4 parts, got {}",
                 parts.len()
-            ));
+            );
         }
 
         let commit_id = git::CommitId(parts[0].to_string());
@@ -137,10 +137,10 @@ impl JujutsuClient {
             .context("Failed to execute jj command")?;
 
         if !output.status.success() {
-            return Err(anyhow!(
+            bail!(
                 "jj command failed: {}",
                 String::from_utf8_lossy(&output.stderr)
-            ));
+            );
         }
 
         let heads: Vec<(String, String)> = String::from_utf8(output.stdout)?
@@ -181,10 +181,10 @@ impl JujutsuClient {
             .context("Failed to execute jj command")?;
 
         if !output.status.success() {
-            return Err(anyhow!(
+            bail!(
                 "jj command failed: {}",
                 String::from_utf8_lossy(&output.stderr)
-            ));
+            );
         }
 
         let changes: Vec<(String, git::CommitId)> = String::from_utf8(output.stdout)?
@@ -214,10 +214,10 @@ impl JujutsuClient {
             .context("Failed to execute jj command")?;
 
         if !output.status.success() {
-            return Err(anyhow!(
+            bail!(
                 "jj command failed: {}",
                 String::from_utf8_lossy(&output.stderr)
-            ));
+            );
         }
 
         Ok(String::from_utf8(output.stdout)?.trim().to_string())
@@ -241,10 +241,10 @@ impl JujutsuClient {
             .context("Failed to execute jj command")?;
 
         if !output.status.success() {
-            return Err(anyhow!(
+            bail!(
                 "jj command failed: {}",
                 String::from_utf8_lossy(&output.stderr)
-            ));
+            );
         }
 
         let output_str = String::from_utf8(output.stdout)?.trim().to_string();
@@ -273,10 +273,10 @@ impl JujutsuClient {
             .context("Failed to execute jj command")?;
 
         if !output.status.success() {
-            return Err(anyhow!(
+            bail!(
                 "jj command failed: {}",
                 String::from_utf8_lossy(&output.stderr)
-            ));
+            );
         }
 
         // If output is non-empty, commit is an ancestor of descendant

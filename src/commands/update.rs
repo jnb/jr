@@ -1,5 +1,6 @@
 use anyhow::Context;
 use anyhow::Result;
+use anyhow::bail;
 
 use crate::App;
 use crate::app::CHANGE_ID_LENGTH;
@@ -114,10 +115,10 @@ impl App {
             )?;
             url
         } else {
-            return Err(anyhow::anyhow!(
+            bail!(
                 "No open PR found for PR branch {}. The PR may have been closed or merged.",
                 pr_branch
-            ));
+            );
         };
 
         writeln!(stdout, "PR URL: {}", pr_url)?;
