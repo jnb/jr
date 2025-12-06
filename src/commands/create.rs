@@ -1,13 +1,27 @@
 use anyhow::Context;
-use anyhow::Result;
 use anyhow::bail;
 
 use crate::App;
 
 impl App {
-    pub async fn cmd_create(&self, revision: &str, stdout: &mut impl std::io::Write) -> Result<()> {
+    /// Create a new pull request.
+    ///
+    /// Define the "base branch" as the parent commit's PR branch (or main).
+    ///
+    /// 1. Create a new commit:
+    ///    - Use this revision's filesystem snapshot as the commit contents.
+    ///    - Use the base branch as the parent.
+    /// 2. Push to a remote PR branch named after this revision's change ID.
+    /// 3. Create a pull request to merge the PR branch into the base branch.
+    pub async fn cmd_create(
+        &self,
+        revision: &str,
+        stdout: &mut impl std::io::Write,
+    ) -> anyhow::Result<()> {
         let commit = self.jj.get_commit(revision).await?;
+
         self.validate_not_merged_to_main(&commit).await?;
+        self.check_parent_prs_up_to_date(revision).await?;
 
         let Some(pr_title) = &commit.message.title else {
             bail!("Cannot create PR with empty description");
