@@ -16,18 +16,15 @@ use super::github_curl::GithubCurlClient;
 // Types
 
 /// Github client.
+///
+/// This is solely used for manipulating PRs.  All other operations should be
+/// delegated to the Git client.
 pub struct GithubClient {
     owner: String,
     repo: String,
     http_client: GithubCurlClient,
     branch_to_pr: Mutex<HashMap<String, Option<PullRequest>>>,
     pr_number_to_diff: Mutex<HashMap<u64, String>>,
-}
-
-#[derive(Debug, Deserialize)]
-struct GitRef {
-    #[serde(rename = "ref")]
-    ref_name: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -110,32 +107,6 @@ impl GithubClient {
         Ok((owner, repo))
     }
 
-    #[instrument(skip_all)]
-    pub async fn find_branches_with_prefix(&self, prefix: &str) -> Result<Vec<String>> {
-        let url = format!(
-            "https://api.github.com/repos/{}/{}/git/matching-refs/heads/{}",
-            self.owner, self.repo, prefix
-        );
-
-        let response = self
-            .http_client
-            .get(&url, "application/vnd.github+json")
-            .await?;
-        let refs: Vec<GitRef> = serde_json::from_str(&response)?;
-
-        let branches = refs
-            .into_iter()
-            .map(|r| {
-                r.ref_name
-                    .strip_prefix("refs/heads/")
-                    .unwrap_or(&r.ref_name)
-                    .to_string()
-            })
-            .collect();
-
-        Ok(branches)
-    }
-
     /// Create a new PR and return the PR URL
     #[instrument(skip_all)]
     pub async fn pr_create(
@@ -198,11 +169,12 @@ impl GithubClient {
         Ok(pr.html_url)
     }
 
-    /// Get the diff for a PR (cumulative diff from base to head)
+    /// Get the diff for a PR.  This is the cumulative diff from the base to
+    /// head.
     #[instrument(skip_all)]
-    pub async fn pr_diff(&self, pr_branch: &str) -> Result<String> {
+    pub async fn pr_diff(&self, branch: &str) -> Result<String> {
         let pr_number = self
-            .pr_number(pr_branch)
+            .pr_number(branch)
             .await?
             .context("PR not found for branch")?;
 
@@ -233,7 +205,7 @@ impl GithubClient {
         Ok(diff)
     }
 
-    /// Helper to get PR number from branch name
+    /// Get PR number from branch.
     #[instrument(skip_all)]
     async fn pr_number(&self, branch: &str) -> Result<Option<u64>> {
         Ok(self.get_pr(branch).await?.map(|pr| pr.number))
@@ -241,15 +213,15 @@ impl GithubClient {
 
     /// Get the PR URL for a branch, returns None if no PR exists
     #[instrument(skip_all)]
-    pub async fn pr_url(&self, pr_branch: &str) -> Result<Option<String>> {
-        Ok(self.get_pr(pr_branch).await?.map(|pr| pr.html_url.clone()))
+    pub async fn pr_url(&self, branch: &str) -> Result<Option<String>> {
+        Ok(self.get_pr(branch).await?.map(|pr| pr.html_url.clone()))
     }
 
-    /// Check if an open PR exists for the branch
+    /// Check if an open PR exists for a branch.
     #[instrument(skip_all)]
-    pub async fn pr_is_open(&self, pr_branch: &str) -> Result<bool> {
+    pub async fn pr_is_open(&self, branch: &str) -> Result<bool> {
         Ok(self
-            .get_pr(pr_branch)
+            .get_pr(branch)
             .await?
             .map(|pr| pr.state == "open")
             .unwrap_or_default())
@@ -285,18 +257,5 @@ impl GithubClient {
             .insert(branch.into(), pr.cloned());
 
         Ok(pr.cloned())
-    }
-
-    /// Delete a remote branch
-    #[instrument(skip_all)]
-    pub async fn delete_branch(&self, branch: &str) -> Result<()> {
-        let url = format!(
-            "https://api.github.com/repos/{}/{}/git/refs/heads/{}",
-            self.owner, self.repo, branch
-        );
-
-        // TODO Clear caches
-
-        self.http_client.delete(&url).await
     }
 }

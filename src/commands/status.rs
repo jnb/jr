@@ -39,7 +39,7 @@ impl App {
 
         // Fetch all branches once
         let all_branches = self
-            .gh
+            .git
             .find_branches_with_prefix(&self.config.github_branch_prefix)
             .await?;
 

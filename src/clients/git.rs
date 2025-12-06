@@ -185,6 +185,25 @@ impl GitClient {
         Ok(())
     }
 
+    /// Delete a remote branch
+    pub async fn delete_branch(&self, branch: &str) -> Result<()> {
+        let output = Command::new("git")
+            .current_dir(&self.path)
+            .args(["push", "origin", "--delete", branch])
+            .output()
+            .await
+            .context("Failed to execute git command")?;
+
+        if !output.status.success() {
+            bail!(
+                "git command failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+
+        Ok(())
+    }
+
     /// Check if `commit` is an ancestor of `descendant`.
     /// Returns true if `commit` is reachable from `descendant` by following parent links.
     /// In other words, returns true if `descendant` contains all changes from `commit`.
@@ -250,6 +269,38 @@ impl GitClient {
         let output_str = String::from_utf8(output.stdout)?.trim().to_string();
 
         // Parse git refs and filter for remote branches only
+        let branches: Vec<String> = output_str
+            .lines()
+            .filter_map(|line| line.strip_prefix("origin/").map(|s| s.to_string()))
+            .collect();
+
+        Ok(branches)
+    }
+
+    /// Find remote branches matching a prefix.
+    /// Returns branch names with "origin/" prefix stripped (e.g., ["test/abc123", "test/xyz789"])
+    pub async fn find_branches_with_prefix(&self, prefix: &str) -> Result<Vec<String>> {
+        let pattern = format!("refs/remotes/origin/{}", prefix);
+        let output = Command::new("git")
+            .current_dir(&self.path)
+            .args([
+                "for-each-ref",
+                "--format=%(refname:short)",
+                &format!("{}*", pattern),
+            ])
+            .output()
+            .await
+            .context("Failed to execute git command")?;
+
+        if !output.status.success() {
+            bail!(
+                "git command failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+
+        let output_str = String::from_utf8(output.stdout)?.trim().to_string();
+
         let branches: Vec<String> = output_str
             .lines()
             .filter_map(|line| line.strip_prefix("origin/").map(|s| s.to_string()))

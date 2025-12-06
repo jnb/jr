@@ -16,6 +16,7 @@ mod utils;
 
 use std::sync::LazyLock;
 
+use jr::clients::git::GitClient;
 use jr::clients::github::GithubClient;
 use log::debug;
 use serde::Deserialize;
@@ -94,14 +95,12 @@ async fn setup(temp_path: &std::path::Path) -> anyhow::Result<()> {
     utils::track_branch(temp_path, "master", "origin").await?;
 
     // Find all branches and delete them
-    let github = GithubClient::new(TEST_CONFIG.github_token.clone(), temp_path.into()).await?;
-    let branches = github
-        .find_branches_with_prefix(GITHUB_BRANCH_PREFIX)
-        .await?;
+    let git = GitClient::new(temp_path.into());
+    let branches = git.find_branches_with_prefix(GITHUB_BRANCH_PREFIX).await?;
     println!("Found {} branches to delete", branches.len());
     for branch in branches {
         println!("Deleting branch: {}", branch);
-        github.delete_branch(&branch).await?;
+        git.delete_branch(&branch).await?;
     }
 
     // Update git repo again because we deleted remote branches
