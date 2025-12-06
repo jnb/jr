@@ -93,10 +93,8 @@ async fn setup(temp_path: &std::path::Path) -> anyhow::Result<()> {
     utils::jj_git_fetch(temp_path).await?;
     utils::track_branch(temp_path, "master", "origin").await?;
 
-    std::env::set_current_dir(temp_path)?;
-
     // Find all branches and delete them
-    let github = GithubClient::new(TEST_CONFIG.github_token.clone())?;
+    let github = GithubClient::new(TEST_CONFIG.github_token.clone(), temp_path.into()).await?;
     let branches = github
         .find_branches_with_prefix(GITHUB_BRANCH_PREFIX)
         .await?;
@@ -153,8 +151,12 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
         GITHUB_BRANCH_PREFIX.to_string(),
         TEST_CONFIG.github_token.clone(),
     );
-    let github = jr::ops::github::GithubClient::new(TEST_CONFIG.github_token.clone())?;
-    let app = jr::App::new(config, github);
+    let github = jr::ops::github::GithubClient::new(
+        TEST_CONFIG.github_token.clone(),
+        test_dir.path().into(),
+    )
+    .await?;
+    let app = jr::App::new(config, github, test_dir.path().into());
 
     let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"

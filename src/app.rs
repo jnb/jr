@@ -1,3 +1,5 @@
+use std::path;
+
 use anyhow::Result;
 use anyhow::bail;
 
@@ -17,12 +19,12 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(config: Config, gh: GithubClient) -> Self {
+    pub fn new(config: Config, gh: GithubClient, path: path::PathBuf) -> Self {
         Self {
             config,
             gh,
-            jj: JujutsuClient,
-            git: GitClient,
+            jj: JujutsuClient::new(path.clone()),
+            git: GitClient::new(path),
         }
     }
 }

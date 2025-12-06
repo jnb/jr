@@ -11,7 +11,9 @@ use tokio::process::Command;
 // Types
 
 /// Operations for interacting with Git
-pub struct GitClient;
+pub struct GitClient {
+    path: std::path::PathBuf,
+}
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct CommitId(pub String);
@@ -26,8 +28,13 @@ impl Display for CommitId {
 // Git impl
 
 impl GitClient {
+    pub fn new(path: std::path::PathBuf) -> Self {
+        Self { path }
+    }
+
     pub async fn get_tree(&self, commit_id: &CommitId) -> Result<String> {
         let output = Command::new("git")
+            .current_dir(&self.path)
             .args(["rev-parse", &format!("{}^{{tree}}", commit_id)])
             .output()
             .await
@@ -45,6 +52,7 @@ impl GitClient {
 
     pub async fn get_branch_tip(&self, branch: &str) -> Result<CommitId> {
         let output = Command::new("git")
+            .current_dir(&self.path)
             .args(["rev-parse", &format!("origin/{}", branch)])
             .output()
             .await
@@ -69,6 +77,7 @@ impl GitClient {
         message: &str,
     ) -> Result<CommitId> {
         let output = Command::new("git")
+            .current_dir(&self.path)
             .args(["commit-tree", tree, "-p", &parent.0, "-m", message])
             .output()
             .await
@@ -101,6 +110,7 @@ impl GitClient {
         args.push(message.to_string());
 
         let output = Command::new("git")
+            .current_dir(&self.path)
             .args(&args)
             .output()
             .await
@@ -120,6 +130,7 @@ impl GitClient {
 
     pub async fn update_branch(&self, branch: &str, commit_id: &CommitId) -> Result<()> {
         let output = Command::new("git")
+            .current_dir(&self.path)
             .args([
                 "update-ref",
                 &format!("refs/heads/{}", branch),
@@ -142,6 +153,7 @@ impl GitClient {
     pub async fn push_branch(&self, branch: &str) -> Result<()> {
         let refspec = format!("refs/heads/{}:refs/heads/{}", branch, branch);
         let output = Command::new("git")
+            .current_dir(&self.path)
             .args(["push", "-u", "origin", &refspec])
             .output()
             .await
@@ -159,6 +171,7 @@ impl GitClient {
 
     pub async fn delete_local_branch(&self, branch: &str) -> Result<()> {
         let output = Command::new("git")
+            .current_dir(&self.path)
             .args(["update-ref", "-d", &format!("refs/heads/{}", branch)])
             .output()
             .await
@@ -179,6 +192,7 @@ impl GitClient {
     /// In other words, returns true if `descendant` contains all changes from `commit`.
     pub async fn is_ancestor(&self, commit: &CommitId, descendant: &CommitId) -> Result<bool> {
         let output = Command::new("git")
+            .current_dir(&self.path)
             .args(["merge-base", "--is-ancestor", &commit.0, &descendant.0])
             .output()
             .await
@@ -195,6 +209,7 @@ impl GitClient {
         // -p: generate patch (full diff with +/- lines)
         // --no-commit-id: don't show the commit ID in output
         let output = Command::new("git")
+            .current_dir(&self.path)
             .args(["diff-tree", "-p", "--no-commit-id", &commit_id.0])
             .output()
             .await

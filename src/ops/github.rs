@@ -1,9 +1,12 @@
 #![allow(async_fn_in_trait)]
 
+use std::path;
+
 use anyhow::Context;
 use anyhow::Result;
 use serde::Deserialize;
 use serde::Serialize;
+use tokio::process::Command;
 use tracing::instrument;
 
 use super::github_curl::GithubCurlClient;
@@ -13,9 +16,9 @@ use super::github_curl::GithubCurlClient;
 
 /// Client to interact with GitHub API.
 pub struct GithubClient {
-    http_client: GithubCurlClient,
     owner: String,
     repo: String,
+    http_client: GithubCurlClient,
 }
 
 #[derive(Debug, Deserialize)]
@@ -49,22 +52,24 @@ struct UpdatePullRequest {
 // GithubClient impl
 
 impl GithubClient {
-    pub fn new(token: String) -> Result<Self> {
-        let (owner, repo) = Self::detect_owner_and_repo()?;
+    pub async fn new(token: String, path: path::PathBuf) -> Result<Self> {
+        let (owner, repo) = Self::detect_owner_and_repo(&path).await?;
         let http_client = GithubCurlClient::new(token);
 
         Ok(Self {
-            http_client,
             owner,
             repo,
+            http_client,
         })
     }
 
     /// Detect owner and repo from git remote URL
-    fn detect_owner_and_repo() -> Result<(String, String)> {
-        let output = std::process::Command::new("git")
+    async fn detect_owner_and_repo(path: &path::Path) -> Result<(String, String)> {
+        let output = Command::new("git")
+            .current_dir(path)
             .args(["config", "--get", "remote.origin.url"])
             .output()
+            .await
             .context("Failed to get git remote URL")?;
 
         if !output.status.success() {

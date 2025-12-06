@@ -1,3 +1,5 @@
+use std::env;
+
 use anyhow::Result;
 use clap::Parser;
 use clap::Subcommand;
@@ -56,16 +58,17 @@ async fn main() -> Result<()> {
     if matches!(cli.command, Some(Commands::Init)) {
         // For init, we don't need to load config first
         let temp_config = Config::default_for_tests(); // Placeholder, not used
-        let temp_github = GithubClient::new(temp_config.github_token.clone())?;
-        let app = App::new(temp_config, temp_github);
+        let temp_github =
+            GithubClient::new(temp_config.github_token.clone(), env::current_dir()?).await?;
+        let app = App::new(temp_config, temp_github, env::current_dir()?);
         app.cmd_init(&mut std::io::stdout()).await?;
         return Ok(());
     }
 
     // For all other commands, load config first
     let config = Config::load()?;
-    let github = GithubClient::new(config.github_token.clone())?;
-    let app = App::new(config, github);
+    let github = GithubClient::new(config.github_token.clone(), env::current_dir()?).await?;
+    let app = App::new(config, github, env::current_dir()?);
 
     match cli.command {
         Some(Commands::Init) => unreachable!(), // Already handled above

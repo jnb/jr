@@ -1,5 +1,7 @@
 #![allow(async_fn_in_trait)]
 
+use std::path;
+
 use anyhow::Context;
 use anyhow::Result;
 use anyhow::anyhow;
@@ -11,7 +13,9 @@ use crate::ops::git;
 // Types
 
 /// Operations on a Jujutsu version control repository.
-pub struct JujutsuClient;
+pub struct JujutsuClient {
+    path: path::PathBuf,
+}
 
 /// Represents a Jujutsu commit with its IDs and message.
 pub struct JujutsuCommit {
@@ -31,10 +35,14 @@ pub struct JujutsuCommitMessage {
 // Jujutsu impl
 
 impl JujutsuClient {
+    pub fn new(path: path::PathBuf) -> Self {
+        Self { path }
+    }
+
     /// Get complete commit information for a revision
     pub async fn get_commit(&self, revision: &str) -> Result<JujutsuCommit> {
         // Get commit_id, change_id, description, and parent change IDs in a single jj command
-        let output = Command::new("jj")
+        let output = Command::new("jj").current_dir(&self.path)
             .args([
                 "log",
                 "-r",
@@ -115,6 +123,7 @@ impl JujutsuClient {
         // These are commits descended from @ that aren't on trunk
         let heads_revset = "heads(descendants(@) ~ ancestors(trunk()))";
         let output = Command::new("jj")
+            .current_dir(&self.path)
             .args([
                 "log",
                 "-r",
@@ -157,6 +166,7 @@ impl JujutsuClient {
         // trunk() is a jj built-in that automatically detects the main branch
         let stack_revset = format!("ancestors({}) ~ ancestors(trunk())", revision);
         let output = Command::new("jj")
+            .current_dir(&self.path)
             .args([
                 "log",
                 "-r",
@@ -197,6 +207,7 @@ impl JujutsuClient {
     /// Get the commit ID of the trunk branch (main/master)
     pub async fn get_trunk_commit_id(&self) -> Result<String> {
         let output = Command::new("jj")
+            .current_dir(&self.path)
             .args(["log", "-r", "trunk()", "--no-graph", "-T", "commit_id"])
             .output()
             .await
@@ -216,6 +227,7 @@ impl JujutsuClient {
     /// Returns branch names with "origin/" prefix stripped (e.g., ["main", "test/abc12345"])
     pub async fn get_git_remote_branches(&self, change_id: &str) -> Result<Vec<String>> {
         let output = Command::new("jj")
+            .current_dir(&self.path)
             .args([
                 "log",
                 "-r",
@@ -254,6 +266,7 @@ impl JujutsuClient {
         // Check if commit is in ancestors(descendant) using Jujutsu revsets
         let revset = format!("ancestors({}) & {}", descendant, commit);
         let output = Command::new("jj")
+            .current_dir(&self.path)
             .args(["log", "-r", &revset, "--no-graph", "-T", "commit_id"])
             .output()
             .await
