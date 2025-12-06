@@ -3,7 +3,7 @@ use clap::Parser;
 use clap::Subcommand;
 use jr::App;
 use jr::Config;
-use jr::ops::github::RealGithub;
+use jr::ops::github::GithubClient;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::Layer as _;
 use tracing_subscriber::layer::SubscriberExt as _;
@@ -56,7 +56,7 @@ async fn main() -> Result<()> {
     if matches!(cli.command, Some(Commands::Init)) {
         // For init, we don't need to load config first
         let temp_config = Config::default_for_tests(); // Placeholder, not used
-        let temp_github = RealGithub::new(temp_config.github_token.clone())?;
+        let temp_github = GithubClient::new(temp_config.github_token.clone())?;
         let app = App::new(temp_config, temp_github);
         app.cmd_init(&mut std::io::stdout()).await?;
         return Ok(());
@@ -64,7 +64,7 @@ async fn main() -> Result<()> {
 
     // For all other commands, load config first
     let config = Config::load()?;
-    let github = RealGithub::new(config.github_token.clone())?;
+    let github = GithubClient::new(config.github_token.clone())?;
     let app = App::new(config, github);
 
     match cli.command {

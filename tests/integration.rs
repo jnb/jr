@@ -16,7 +16,7 @@ mod utils;
 
 use std::sync::LazyLock;
 
-use jr::ops::github::RealGithub;
+use jr::ops::github::GithubClient;
 use log::debug;
 use serde::Deserialize;
 use tracing::instrument;
@@ -96,7 +96,7 @@ async fn setup(temp_path: &std::path::Path) -> anyhow::Result<()> {
     std::env::set_current_dir(temp_path)?;
 
     // Find all branches and delete them
-    let github = RealGithub::new(TEST_CONFIG.github_token.clone())?;
+    let github = GithubClient::new(TEST_CONFIG.github_token.clone())?;
     let branches = github
         .find_branches_with_prefix(GITHUB_BRANCH_PREFIX)
         .await?;
@@ -153,7 +153,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
         GITHUB_BRANCH_PREFIX.to_string(),
         TEST_CONFIG.github_token.clone(),
     );
-    let github = jr::ops::github::RealGithub::new(TEST_CONFIG.github_token.clone())?;
+    let github = jr::ops::github::GithubClient::new(TEST_CONFIG.github_token.clone())?;
     let app = jr::App::new(config, github);
 
     let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));

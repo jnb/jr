@@ -7,8 +7,11 @@ use anyhow::Result;
 use anyhow::anyhow;
 use tokio::process::Command;
 
+// -----------------------------------------------------------------------------
+// Types
+
 /// Operations for interacting with Git
-pub struct RealGit;
+pub struct GitClient;
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct CommitId(pub String);
@@ -19,7 +22,10 @@ impl Display for CommitId {
     }
 }
 
-impl RealGit {
+// -----------------------------------------------------------------------------
+// Git impl
+
+impl GitClient {
     pub async fn get_tree(&self, commit_id: &CommitId) -> Result<String> {
         let output = Command::new("git")
             .args(["rev-parse", &format!("{}^{{tree}}", commit_id)])

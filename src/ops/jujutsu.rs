@@ -10,42 +10,29 @@ use crate::ops::git;
 // -----------------------------------------------------------------------------
 // Types
 
-/// Represents a commit with its IDs and message
-pub struct Commit {
+/// Operations on a Jujutsu version control repository.
+pub struct JujutsuClient;
+
+/// Represents a Jujutsu commit with its IDs and message.
+pub struct JujutsuCommit {
     pub change_id: String,
     pub commit_id: git::CommitId,
-    pub message: CommitMessage,
+    pub message: JujutsuCommitMessage,
     pub parent_change_ids: Vec<String>,
 }
 
-/// Represents a commit message with title and body
-pub struct CommitMessage {
+/// Represents a Jujutsu commit message with title and body.
+pub struct JujutsuCommitMessage {
     pub title: Option<String>,
     pub body: Option<String>,
 }
 
-impl Commit {
-    /// Reconstruct the full commit message from title and body
-    pub fn full_message(&self) -> String {
-        match (&self.message.title, &self.message.body) {
-            (Some(title), Some(body)) => format!("{}\n\n{}", title, body),
-            (Some(title), None) => title.clone(),
-            (None, Some(body)) => body.clone(),
-            (None, None) => String::new(),
-        }
-    }
-}
-
 // -----------------------------------------------------------------------------
-// RealJujutsu
+// Jujutsu impl
 
-/// Operations for interacting with Jujutsu version control.
-/// Real implementation that calls the jj CLI
-pub struct RealJujutsu;
-
-impl RealJujutsu {
+impl JujutsuClient {
     /// Get complete commit information for a revision
-    pub async fn get_commit(&self, revision: &str) -> Result<Commit> {
+    pub async fn get_commit(&self, revision: &str) -> Result<JujutsuCommit> {
         // Get commit_id, change_id, description, and parent change IDs in a single jj command
         let output = Command::new("jj")
             .args([
@@ -113,10 +100,10 @@ impl RealJujutsu {
             None
         };
 
-        Ok(Commit {
+        Ok(JujutsuCommit {
             change_id,
             commit_id,
-            message: CommitMessage { title, body },
+            message: JujutsuCommitMessage { title, body },
             parent_change_ids,
         })
     }
@@ -281,5 +268,20 @@ impl RealJujutsu {
 
         // If output is non-empty, commit is an ancestor of descendant
         Ok(!String::from_utf8(output.stdout)?.trim().is_empty())
+    }
+}
+
+// -----------------------------------------------------------------------------
+// JujutuCommit impl
+
+impl JujutsuCommit {
+    /// Reconstruct the full commit message from title and body
+    pub fn full_message(&self) -> String {
+        match (&self.message.title, &self.message.body) {
+            (Some(title), Some(body)) => format!("{}\n\n{}", title, body),
+            (Some(title), None) => title.clone(),
+            (None, Some(body)) => body.clone(),
+            (None, None) => String::new(),
+        }
     }
 }

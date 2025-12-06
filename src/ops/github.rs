@@ -9,7 +9,14 @@ use tracing::instrument;
 use super::github_curl::GithubCurlClient;
 
 // -----------------------------------------------------------------------------
-// GitHub API types
+// Types
+
+/// Client to interact with GitHub API.
+pub struct GithubClient {
+    http_client: GithubCurlClient,
+    owner: String,
+    repo: String,
+}
 
 #[derive(Debug, Deserialize)]
 struct GitRef {
@@ -38,15 +45,10 @@ struct UpdatePullRequest {
     base: String,
 }
 
-/// Operations for interacting with GitHub.
-/// Makes HTTP requests to GitHub API via curl.
-pub struct RealGithub {
-    http_client: GithubCurlClient,
-    owner: String,
-    repo: String,
-}
+// -----------------------------------------------------------------------------
+// GithubClient impl
 
-impl RealGithub {
+impl GithubClient {
     pub fn new(token: String) -> Result<Self> {
         let (owner, repo) = Self::detect_owner_and_repo()?;
         let http_client = GithubCurlClient::new(token);
