@@ -3,7 +3,6 @@ use anyhow::Result;
 use anyhow::bail;
 
 use crate::App;
-use crate::app::CHANGE_ID_LENGTH;
 
 impl App {
     pub async fn cmd_update(
@@ -22,8 +21,9 @@ impl App {
         self.check_parent_prs_up_to_date(revision).await?;
 
         // PR branch names: current and base
-        let short_change_id = &commit.change_id[..CHANGE_ID_LENGTH.min(commit.change_id.len())];
-        let pr_branch = format!("{}{}", self.config.github_branch_prefix, short_change_id);
+        let pr_branch = &commit
+            .change_id
+            .branch_name(&self.config.github_branch_prefix);
         let base_branch = self.find_previous_branch(revision).await?;
 
         writeln!(stdout, "PR branch: {}", pr_branch)?;

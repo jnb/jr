@@ -6,7 +6,6 @@ use futures_util::future::join_all;
 use log::debug;
 
 use crate::App;
-use crate::app::CHANGE_ID_LENGTH;
 use crate::clients::jujutsu;
 use crate::diff_utils::normalize_diff;
 
@@ -46,19 +45,16 @@ impl App {
         // Collect all unique branches we need pr_diffs for (changes + their parents)
         let mut branches_needing_diffs = std::collections::HashSet::new();
         for commit in &changes {
-            let short_change_id = &commit.change_id[..CHANGE_ID_LENGTH.min(commit.change_id.len())];
-            let expected_branch =
-                format!("{}{}", self.config.github_branch_prefix, short_change_id);
+            let expected_branch = commit
+                .change_id
+                .branch_name(&self.config.github_branch_prefix);
             if all_branches.contains(&expected_branch) {
                 branches_needing_diffs.insert(expected_branch);
             }
 
             // Also collect parent branches
             for parent_change_id in &commit.parent_change_ids {
-                let short_parent_id =
-                    &parent_change_id[..CHANGE_ID_LENGTH.min(parent_change_id.len())];
-                let parent_branch =
-                    format!("{}{}", self.config.github_branch_prefix, short_parent_id);
+                let parent_branch = parent_change_id.branch_name(&self.config.github_branch_prefix);
                 if all_branches.contains(&parent_branch) {
                     branches_needing_diffs.insert(parent_branch);
                 }
@@ -83,10 +79,9 @@ impl App {
         let pr_url_futures: Vec<_> = changes
             .iter()
             .map(|commit| {
-                let short_change_id =
-                    &commit.change_id[..CHANGE_ID_LENGTH.min(commit.change_id.len())];
-                let expected_branch =
-                    format!("{}{}", self.config.github_branch_prefix, short_change_id);
+                let expected_branch = commit
+                    .change_id
+                    .branch_name(&self.config.github_branch_prefix);
                 let branch_exists = all_branches.contains(&expected_branch);
 
                 async move {
@@ -105,15 +100,15 @@ impl App {
         // Get base branches concurrently
         let base_branch_futures: Vec<_> = changes
             .iter()
-            .map(|commit| self.find_previous_branch(&commit.change_id))
+            .map(|commit| self.find_previous_branch(&commit.change_id.0))
             .collect();
         let base_branches = join_all(base_branch_futures).await;
 
         // Display results
         for (i, commit) in changes.iter().enumerate() {
-            let short_change_id = &commit.change_id[..CHANGE_ID_LENGTH.min(commit.change_id.len())];
-            let expected_branch =
-                format!("{}{}", self.config.github_branch_prefix, short_change_id);
+            let expected_branch = &commit
+                .change_id
+                .branch_name(&self.config.github_branch_prefix);
             let pr_url_result = &pr_urls[i];
             let base_branch_result = &base_branches[i];
 
@@ -122,11 +117,11 @@ impl App {
             let commit_title = commit.message.title.as_deref().unwrap_or("");
 
             // Get abbreviated change ID (4 chars, matching jj status default)
-            let abbreviated_change_id = &commit.change_id[..4.min(commit.change_id.len())];
+            let abbreviated_change_id = &commit.change_id.short_id();
 
             // Check if parent PR is outdated
             let parent_pr_outdated = self
-                .is_parent_pr_outdated(&commit.change_id, &all_branches, &pr_diffs)
+                .is_parent_pr_outdated(&commit.change_id.0, &all_branches, &pr_diffs)
                 .await?;
 
             // Get base branch (or default to empty string if error)
@@ -156,7 +151,7 @@ impl App {
         &self,
         expected_branch: &str,
         commit: &jujutsu::JujutsuCommit,
-        current_change_id: &String,
+        current_change_id: &jujutsu::JujutsuChangeId,
         all_branches: &[String],
         pr_url_result: &Result<Option<String>>,
         commit_title: &str,
@@ -279,13 +274,12 @@ impl App {
 
         // For each parent, check if it has a PR and if it's outdated
         for parent_change_id in parent_change_ids {
-            let short_parent_id = &parent_change_id[..CHANGE_ID_LENGTH.min(parent_change_id.len())];
-            let parent_branch = format!("{}{}", self.config.github_branch_prefix, short_parent_id);
+            let parent_branch = parent_change_id.branch_name(&self.config.github_branch_prefix);
 
             // If this parent has a PR branch, check if it's outdated
             if all_branches.contains(&parent_branch) {
                 // Compare parent's local single commit diff vs cumulative PR diff from cache
-                let parent_commit = self.jj.get_commit(&parent_change_id).await?;
+                let parent_commit = self.jj.get_commit(&parent_change_id.0).await?;
                 let parent_local_diff = self.git.get_commit_diff(&parent_commit.commit_id).await?;
 
                 if let Some(parent_pr_diff) = pr_diffs.get(&parent_branch) {
@@ -299,7 +293,7 @@ impl App {
                 }
 
                 // Check if parent's base has moved
-                if let Ok(parent_base_branch) = self.find_previous_branch(&parent_change_id).await
+                if let Ok(parent_base_branch) = self.find_previous_branch(&parent_change_id.0).await
                     && let Ok(parent_pr_commit) = self.git.get_branch_tip(&parent_branch).await
                     && let Ok(base_tip) = self.git.get_branch_tip(&parent_base_branch).await
                 {
@@ -310,7 +304,7 @@ impl App {
                 }
 
                 // Recursively check if the parent itself needs a restack
-                if Box::pin(self.is_parent_pr_outdated(&parent_change_id, all_branches, pr_diffs))
+                if Box::pin(self.is_parent_pr_outdated(&parent_change_id.0, all_branches, pr_diffs))
                     .await?
                 {
                     return Ok(true); // Parent's ancestor is outdated

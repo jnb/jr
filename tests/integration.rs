@@ -158,10 +158,10 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
 
     let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
-        ? [CHGID]
-        ? [CHGID] Gamma
-        ? [CHGID] Beta
-        ? [CHGID] Alpha
+    ? [CHGID]
+    ? [CHGID] Gamma
+    ? [CHGID] Beta
+    ? [CHGID] Alpha
     ");
 
     // -------------------------------------------------------------------------
@@ -169,28 +169,16 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
 
     debug!("Creating PR for alpha");
     let (out, _) = run_and_capture!(|out, _| app.cmd_create("description(Alpha)", out));
-    assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
-    Change ID: [CHGID]
-    Commit ID: [OBJID]
-    PR branch: [BRANCH]
-    Base branch: master
-    Tree: [OBJID]
-    Created new commit: [OBJID]
-    Updated PR branch [BRANCH]
-    Pushed PR branch [BRANCH]
-    Deleted local branch [BRANCH]
-    Created PR for [BRANCH] with base master
-    PR URL: https://github.com/[USER]/[REPO]/[PRID]
-    ");
+    assert_snapshot_filtered!(out, INSTA_FILTERS, @"Created PR: https://github.com/[USER]/[REPO]/[PRID]");
 
     debug!("Getting status");
     let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
-        ? [CHGID]
-        ? [CHGID] Gamma
-        ? [CHGID] Beta
-        ✓ [CHGID] Alpha
-          https://github.com/[USER]/[REPO]/[PRID]
+    ? [CHGID]
+    ? [CHGID] Gamma
+    ? [CHGID] Beta
+    ✓ [CHGID] Alpha
+      https://github.com/[USER]/[REPO]/[PRID]
     ");
 
     // -------------------------------------------------------------------------
@@ -198,29 +186,17 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
 
     debug!("Creating PR for beta");
     let (out, _) = run_and_capture!(|out, _| app.cmd_create("description(Beta)", out));
-    assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
-    Change ID: [CHGID]
-    Commit ID: [OBJID]
-    PR branch: [BRANCH]
-    Base branch: [BRANCH]
-    Tree: [OBJID]
-    Created new commit: [OBJID]
-    Updated PR branch [BRANCH]
-    Pushed PR branch [BRANCH]
-    Deleted local branch [BRANCH]
-    Created PR for [BRANCH] with base [BRANCH]
-    PR URL: https://github.com/[USER]/[REPO]/[PRID]
-    ");
+    assert_snapshot_filtered!(out, INSTA_FILTERS, @"Created PR: https://github.com/[USER]/[REPO]/[PRID]");
 
     debug!("Getting status");
     let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
-        ? [CHGID]
-        ? [CHGID] Gamma
-        ✓ [CHGID] Beta
-          https://github.com/[USER]/[REPO]/[PRID]
-        ✓ [CHGID] Alpha
-          https://github.com/[USER]/[REPO]/[PRID]
+    ? [CHGID]
+    ? [CHGID] Gamma
+    ✓ [CHGID] Beta
+      https://github.com/[USER]/[REPO]/[PRID]
+    ✓ [CHGID] Alpha
+      https://github.com/[USER]/[REPO]/[PRID]
     ");
 
     // -------------------------------------------------------------------------
@@ -228,30 +204,18 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
 
     debug!("Creating PR for gamma");
     let (out, _) = run_and_capture!(|out, _| app.cmd_create("description(Gamma)", out));
-    assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
-    Change ID: [CHGID]
-    Commit ID: [OBJID]
-    PR branch: [BRANCH]
-    Base branch: [BRANCH]
-    Tree: [OBJID]
-    Created new commit: [OBJID]
-    Updated PR branch [BRANCH]
-    Pushed PR branch [BRANCH]
-    Deleted local branch [BRANCH]
-    Created PR for [BRANCH] with base [BRANCH]
-    PR URL: https://github.com/[USER]/[REPO]/[PRID]
-    ");
+    assert_snapshot_filtered!(out, INSTA_FILTERS, @"Created PR: https://github.com/[USER]/[REPO]/[PRID]");
 
     debug!("Getting status");
     let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
-        ? [CHGID]
-        ✓ [CHGID] Gamma
-          https://github.com/[USER]/[REPO]/[PRID]
-        ✓ [CHGID] Beta
-          https://github.com/[USER]/[REPO]/[PRID]
-        ✓ [CHGID] Alpha
-          https://github.com/[USER]/[REPO]/[PRID]
+    ? [CHGID]
+    ✓ [CHGID] Gamma
+      https://github.com/[USER]/[REPO]/[PRID]
+    ✓ [CHGID] Beta
+      https://github.com/[USER]/[REPO]/[PRID]
+    ✓ [CHGID] Alpha
+      https://github.com/[USER]/[REPO]/[PRID]
     ");
 
     // -------------------------------------------------------------------------
@@ -264,12 +228,12 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     debug!("Getting status");
     let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
-        ↻ [CHGID] Gamma
-          https://github.com/[USER]/[REPO]/[PRID]
-        ↻ [CHGID] Beta
-          https://github.com/[USER]/[REPO]/[PRID]
-        ✗ [CHGID] Alpha
-          https://github.com/[USER]/[REPO]/[PRID]
+    ↻ [CHGID] Gamma
+      https://github.com/[USER]/[REPO]/[PRID]
+    ↻ [CHGID] Beta
+      https://github.com/[USER]/[REPO]/[PRID]
+    ✗ [CHGID] Alpha
+      https://github.com/[USER]/[REPO]/[PRID]
     ");
 
     // -------------------------------------------------------------------------
@@ -299,12 +263,12 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     debug!("Getting status");
     let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
-        ↻ [CHGID] Gamma
-          https://github.com/[USER]/[REPO]/[PRID]
-        ↻ [CHGID] Beta
-          https://github.com/[USER]/[REPO]/[PRID]
-        ✓ [CHGID] Alpha
-          https://github.com/[USER]/[REPO]/[PRID]
+    ↻ [CHGID] Gamma
+      https://github.com/[USER]/[REPO]/[PRID]
+    ↻ [CHGID] Beta
+      https://github.com/[USER]/[REPO]/[PRID]
+    ✓ [CHGID] Alpha
+      https://github.com/[USER]/[REPO]/[PRID]
     ");
 
     // -------------------------------------------------------------------------
@@ -331,12 +295,12 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     debug!("Gettings status");
     let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
-        ↻ [CHGID] Gamma
-          https://github.com/[USER]/[REPO]/[PRID]
-        ✓ [CHGID] Beta
-          https://github.com/[USER]/[REPO]/[PRID]
-        ✓ [CHGID] Alpha
-          https://github.com/[USER]/[REPO]/[PRID]
+    ↻ [CHGID] Gamma
+      https://github.com/[USER]/[REPO]/[PRID]
+    ✓ [CHGID] Beta
+      https://github.com/[USER]/[REPO]/[PRID]
+    ✓ [CHGID] Alpha
+      https://github.com/[USER]/[REPO]/[PRID]
     ");
 
     // -------------------------------------------------------------------------
@@ -363,12 +327,12 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     debug!("Getting status");
     let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
-        ✓ [CHGID] Gamma
-          https://github.com/[USER]/[REPO]/[PRID]
-        ✓ [CHGID] Beta
-          https://github.com/[USER]/[REPO]/[PRID]
-        ✓ [CHGID] Alpha
-          https://github.com/[USER]/[REPO]/[PRID]
+    ✓ [CHGID] Gamma
+      https://github.com/[USER]/[REPO]/[PRID]
+    ✓ [CHGID] Beta
+      https://github.com/[USER]/[REPO]/[PRID]
+    ✓ [CHGID] Alpha
+      https://github.com/[USER]/[REPO]/[PRID]
     ");
 
     Ok(())

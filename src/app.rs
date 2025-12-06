@@ -65,8 +65,7 @@ impl App {
 
         // Check if parent PR branch exists
         let parent_change_id = &commit.parent_change_ids[0];
-        let short_parent_id = &parent_change_id[..CHANGE_ID_LENGTH.min(parent_change_id.len())];
-        let parent_branch = format!("{}{}", self.config.github_branch_prefix, short_parent_id);
+        let parent_branch = parent_change_id.branch_name(&self.config.github_branch_prefix);
         if self.git.get_branch_tip(&parent_branch).await.is_ok() {
             return Ok(parent_branch);
         }
@@ -105,10 +104,9 @@ impl App {
             .iter()
             .filter(|stack_commit| stack_commit.commit_id != commit.commit_id)
             .filter_map(|stack_commit| {
-                let short_change_id =
-                    &stack_commit.change_id[..CHANGE_ID_LENGTH.min(stack_commit.change_id.len())];
-                let expected_branch =
-                    format!("{}{}", self.config.github_branch_prefix, short_change_id);
+                let expected_branch = stack_commit
+                    .change_id
+                    .branch_name(&self.config.github_branch_prefix);
                 if all_branches.contains(&expected_branch) {
                     Some((stack_commit, expected_branch))
                 } else {
@@ -132,7 +130,7 @@ impl App {
             branches_to_check.iter().zip(pr_diff_results.iter())
         {
             // Get the commit for this change
-            let commit_in_stack = self.jj.get_commit(&stack_commit.change_id).await?;
+            let commit_in_stack = self.jj.get_commit(&stack_commit.change_id.0).await?;
 
             // Compare local single commit diff vs cumulative PR diff from GitHub
             let local_diff = self.git.get_commit_diff(&commit_in_stack.commit_id).await?;

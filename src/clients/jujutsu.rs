@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use std::path;
 
 use anyhow::Context;
@@ -5,6 +6,7 @@ use anyhow::bail;
 use tokio::process::Command;
 
 use super::git;
+use crate::app::CHANGE_ID_LENGTH;
 
 // -----------------------------------------------------------------------------
 // Types
@@ -20,11 +22,14 @@ pub struct JujutsuClient {
 /// A Jujutsu commit.
 #[derive(Clone)]
 pub struct JujutsuCommit {
-    pub change_id: String,
+    pub change_id: JujutsuChangeId,
     pub commit_id: git::CommitId,
     pub message: JujutsuCommitMessage,
-    pub parent_change_ids: Vec<String>,
+    pub parent_change_ids: Vec<JujutsuChangeId>,
 }
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct JujutsuChangeId(pub String);
 
 /// A Jujutsu commit message with title and body.
 #[derive(Clone)]
@@ -123,15 +128,18 @@ impl JujutsuClient {
             }
 
             let commit_id = git::CommitId(parts[0].to_string());
-            let change_id = parts[1].to_string();
+            let change_id = JujutsuChangeId(parts[1].to_string());
             let description = parts[2].to_string();
             let parent_ids_str = parts[3];
 
             // Parse parent change IDs (comma-separated, may be empty)
-            let parent_change_ids: Vec<String> = if parent_ids_str.is_empty() {
+            let parent_change_ids: Vec<_> = if parent_ids_str.is_empty() {
                 vec![]
             } else {
-                parent_ids_str.split(',').map(|s| s.to_string()).collect()
+                parent_ids_str
+                    .split(',')
+                    .map(|s| JujutsuChangeId(s.to_string()))
+                    .collect()
             };
 
             // Parse commit message into title and body
@@ -167,6 +175,25 @@ impl JujutsuClient {
         }
 
         Ok(commits)
+    }
+}
+
+// -----------------------------------------------------------------------------
+// JujutsuChangeId impl
+
+impl JujutsuChangeId {
+    pub fn branch_name(&self, prefix: &str) -> String {
+        format!("{prefix}{}", &self.0[..CHANGE_ID_LENGTH.min(self.0.len())])
+    }
+
+    pub fn short_id(&self) -> String {
+        self.0[..4.min(self.0.len())].into()
+    }
+}
+
+impl Display for JujutsuChangeId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
     }
 }
 
