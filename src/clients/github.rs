@@ -1,6 +1,8 @@
 #![allow(async_fn_in_trait)]
 
+use std::collections::HashMap;
 use std::path;
+use std::sync::Mutex;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -20,6 +22,8 @@ pub struct GithubClient {
     owner: String,
     repo: String,
     http_client: GithubCurlClient,
+    branch_to_pr: Mutex<HashMap<String, Option<PullRequest>>>,
+    pr_number_to_diff: Mutex<HashMap<u64, String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -28,7 +32,7 @@ struct GitRef {
     ref_name: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 struct PullRequest {
     number: u64,
     html_url: String,
@@ -61,6 +65,8 @@ impl GithubClient {
             owner,
             repo,
             http_client,
+            branch_to_pr: Mutex::new(HashMap::new()),
+            pr_number_to_diff: Mutex::new(HashMap::new()),
         })
     }
 
@@ -132,48 +138,6 @@ impl GithubClient {
         Ok(branches)
     }
 
-    /// Check if an open PR exists for the branch
-    #[instrument(skip_all)]
-    pub async fn pr_is_open(&self, pr_branch: &str) -> Result<bool> {
-        let url = format!(
-            "https://api.github.com/repos/{}/{}/pulls?head={}:{}&state=open",
-            self.owner, self.repo, self.owner, pr_branch
-        );
-
-        let response = self
-            .http_client
-            .get(&url, "application/vnd.github+json")
-            .await;
-        match response {
-            Ok(resp) => {
-                let prs: Vec<PullRequest> = serde_json::from_str(&resp)?;
-                Ok(!prs.is_empty())
-            }
-            Err(_) => Ok(false),
-        }
-    }
-
-    /// Get the PR URL for a branch, returns None if no PR exists
-    #[instrument(skip_all)]
-    pub async fn pr_url(&self, pr_branch: &str) -> Result<Option<String>> {
-        let url = format!(
-            "https://api.github.com/repos/{}/{}/pulls?head={}:{}&state=all",
-            self.owner, self.repo, self.owner, pr_branch
-        );
-
-        let response = self
-            .http_client
-            .get(&url, "application/vnd.github+json")
-            .await;
-        match response {
-            Ok(resp) => {
-                let prs: Vec<PullRequest> = serde_json::from_str(&resp)?;
-                Ok(prs.first().map(|pr| pr.html_url.clone()))
-            }
-            Err(_) => Ok(None),
-        }
-    }
-
     /// Create a new PR and return the PR URL
     #[instrument(skip_all)]
     pub async fn pr_create(
@@ -199,6 +163,12 @@ impl GithubClient {
         let json_data = serde_json::to_string(&request_body)?;
         let response = self.http_client.post(&url, &json_data).await?;
         let pr: PullRequest = serde_json::from_str(&response)?;
+
+        self.branch_to_pr
+            .lock()
+            .expect("Shouldn't fail")
+            .insert(pr_branch.into(), Some(pr.clone()));
+
         Ok(pr.html_url)
     }
 
@@ -206,9 +176,14 @@ impl GithubClient {
     #[instrument(skip_all)]
     pub async fn pr_edit(&self, pr_branch: &str, base_branch: &str) -> Result<String> {
         let pr_number = self
-            .get_pr_number(pr_branch)
+            .pr_number(pr_branch)
             .await?
             .context("PR not found for branch")?;
+
+        self.pr_number_to_diff
+            .lock()
+            .expect("Shouldn't fail")
+            .remove(&pr_number);
 
         let url = format!(
             "https://api.github.com/repos/{}/{}/pulls/{}",
@@ -229,23 +204,71 @@ impl GithubClient {
     #[instrument(skip_all)]
     pub async fn pr_diff(&self, pr_branch: &str) -> Result<String> {
         let pr_number = self
-            .get_pr_number(pr_branch)
+            .pr_number(pr_branch)
             .await?
             .context("PR not found for branch")?;
+
+        if let Some(diff) = self
+            .pr_number_to_diff
+            .lock()
+            .expect("Shouldn't fail")
+            .get(&pr_number)
+        {
+            return Ok(diff.clone());
+        }
 
         let url = format!(
             "https://api.github.com/repos/{}/{}/pulls/{}",
             self.owner, self.repo, pr_number
         );
 
-        self.http_client
+        let diff = self
+            .http_client
             .get(&url, "application/vnd.github.diff")
-            .await
+            .await?;
+
+        self.pr_number_to_diff
+            .lock()
+            .expect("Shouldn't fail")
+            .insert(pr_number, diff.clone());
+
+        Ok(diff)
     }
 
     /// Helper to get PR number from branch name
     #[instrument(skip_all)]
-    async fn get_pr_number(&self, branch: &str) -> Result<Option<u64>> {
+    async fn pr_number(&self, branch: &str) -> Result<Option<u64>> {
+        Ok(self.get_pr(branch).await?.map(|pr| pr.number))
+    }
+
+    /// Get the PR URL for a branch, returns None if no PR exists
+    #[instrument(skip_all)]
+    pub async fn pr_url(&self, pr_branch: &str) -> Result<Option<String>> {
+        Ok(self.get_pr(pr_branch).await?.map(|pr| pr.html_url.clone()))
+    }
+
+    /// Check if an open PR exists for the branch
+    #[instrument(skip_all)]
+    pub async fn pr_is_open(&self, pr_branch: &str) -> Result<bool> {
+        Ok(self
+            .get_pr(pr_branch)
+            .await?
+            .map(|pr| pr.state == "open")
+            .unwrap_or_default())
+    }
+
+    /// Helper to get PR from branch name
+    #[instrument(skip_all)]
+    async fn get_pr(&self, branch: &str) -> Result<Option<PullRequest>> {
+        if let Some(pr) = self
+            .branch_to_pr
+            .lock()
+            .expect("Shouldn't fail")
+            .get(branch)
+        {
+            return Ok(pr.clone());
+        }
+
         let url = format!(
             "https://api.github.com/repos/{}/{}/pulls?head={}:{}&state=all",
             self.owner, self.repo, self.owner, branch
@@ -256,7 +279,14 @@ impl GithubClient {
             .get(&url, "application/vnd.github+json")
             .await?;
         let prs: Vec<PullRequest> = serde_json::from_str(&response)?;
-        Ok(prs.first().map(|pr| pr.number))
+        let pr = prs.first();
+
+        self.branch_to_pr
+            .lock()
+            .expect("Shouldn't fail")
+            .insert(branch.into(), pr.cloned());
+
+        Ok(pr.cloned())
     }
 
     /// Delete a remote branch
@@ -266,6 +296,8 @@ impl GithubClient {
             "https://api.github.com/repos/{}/{}/git/refs/heads/{}",
             self.owner, self.repo, branch
         );
+
+        // TODO Clear caches
 
         self.http_client.delete(&url).await
     }
