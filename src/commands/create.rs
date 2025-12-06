@@ -35,9 +35,9 @@ impl App {
             .commit_tree(&tree, vec![&parent_commit], &commit.full_message())
             .await?;
 
-        self.git.update_branch(&pr_branch, &new_commit).await?;
-        self.git.push_branch(&pr_branch).await?;
-        self.git.delete_local_branch(&pr_branch).await?;
+        self.git
+            .push_commit_to_branch(&new_commit, &pr_branch)
+            .await?;
 
         let pr_url = self
             .gh

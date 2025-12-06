@@ -21,7 +21,7 @@ impl App {
         self.check_parent_prs_up_to_date(revision).await?;
 
         // PR branch names: current and base
-        let pr_branch = &commit
+        let pr_branch = commit
             .change_id
             .branch_name(&self.config.github_branch_prefix);
         let base_branch = self.find_previous_branch(revision).await?;
@@ -97,16 +97,11 @@ impl App {
             return Ok(());
         }
 
-        // Update PR branch to point to new commit
-        self.git.update_branch(&pr_branch, &new_commit).await?;
-        writeln!(stdout, "Updated PR branch {}", pr_branch)?;
-
-        // Push PR branch
-        self.git.push_branch(&pr_branch).await?;
+        // Push commit directly to PR branch
+        self.git
+            .push_commit_to_branch(&new_commit, &pr_branch)
+            .await?;
         writeln!(stdout, "Pushed PR branch {}", pr_branch)?;
-
-        self.git.delete_local_branch(&pr_branch).await?;
-        writeln!(stdout, "Deleted local branch {}", pr_branch)?;
 
         // Update PR base if needed
         let pr_url = if self.gh.pr_is_open(&pr_branch).await? {

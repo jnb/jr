@@ -160,6 +160,26 @@ impl GitClient {
         Ok(())
     }
 
+    /// Push a commit directly to a remote branch without creating a local branch
+    pub async fn push_commit_to_branch(&self, commit_id: &CommitId, branch: &str) -> Result<()> {
+        let refspec = format!("{}:refs/heads/{}", commit_id.0, branch);
+        let output = Command::new("git")
+            .current_dir(&self.path)
+            .args(["push", "-u", "origin", &refspec])
+            .output()
+            .await
+            .context("Failed to execute git command")?;
+
+        if !output.status.success() {
+            bail!(
+                "git command failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+
+        Ok(())
+    }
+
     /// Delete a remote branch
     pub async fn delete_branch(&self, branch: &str) -> Result<()> {
         let output = Command::new("git")

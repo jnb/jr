@@ -106,7 +106,7 @@ impl App {
 
         // Display results
         for (i, commit) in changes.iter().enumerate() {
-            let expected_branch = &commit
+            let expected_branch = commit
                 .change_id
                 .branch_name(&self.config.github_branch_prefix);
             let pr_url_result = &pr_urls[i];

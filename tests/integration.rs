@@ -253,9 +253,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     Tree: [OBJID]
     PR branch [BRANCH] exists
     Created new commit: [OBJID]
-    Updated PR branch [BRANCH]
     Pushed PR branch [BRANCH]
-    Deleted local branch [BRANCH]
     Updated PR for [BRANCH] with base master
     PR URL: https://github.com/[USER]/[REPO]/[PRID]
     ");
@@ -285,9 +283,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     PR branch [BRANCH] exists
     Detected pure restack (no changes to this commit)
     Created new merge commit: [OBJID]
-    Updated PR branch [BRANCH]
     Pushed PR branch [BRANCH]
-    Deleted local branch [BRANCH]
     Updated PR for [BRANCH] with base [BRANCH]
     PR URL: https://github.com/[USER]/[REPO]/[PRID]
     ");
@@ -317,9 +313,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     PR branch [BRANCH] exists
     Detected pure restack (no changes to this commit)
     Created new merge commit: [OBJID]
-    Updated PR branch [BRANCH]
     Pushed PR branch [BRANCH]
-    Deleted local branch [BRANCH]
     Updated PR for [BRANCH] with base [BRANCH]
     PR URL: https://github.com/[USER]/[REPO]/[PRID]
     ");
