@@ -7,7 +7,7 @@ use log::debug;
 
 use crate::App;
 use crate::app::CHANGE_ID_LENGTH;
-use crate::clients::git;
+use crate::clients::jujutsu;
 use crate::diff_utils::normalize_diff;
 
 impl App {
@@ -16,30 +16,25 @@ impl App {
         stdout: &mut impl std::io::Write,
         stderr: &mut impl std::io::Write,
     ) -> Result<()> {
-        // Get the current commit to mark it in the output
         let current_commit = self.jj.get_commit("@").await?;
 
-        // Find the head(s) of the current stack
-        let heads = self.jj.get_stack_heads().await?;
+        let heads = self.jj.get_stack_heads("@").await?;
 
         // Collect all changes to process
-        let changes: Vec<(String, git::CommitId)> = if heads.is_empty() {
+        let changes = if heads.is_empty() {
             // Current commit is on trunk or no stack exists
-            vec![(
-                current_commit.change_id.clone(),
-                current_commit.commit_id.clone(),
-            )]
+            vec![current_commit.clone()]
         } else if heads.len() == 1 {
             // Single head - show from head back to trunk
-            let (_head_change_id, head_commit_id) = &heads[0];
-            self.jj.get_stack_changes(head_commit_id).await?
+            let head_commit_id = &heads[0].commit_id.0;
+            self.jj.get_stack_ancestors(head_commit_id).await?
         } else {
             // Multiple heads detected - show from @ to trunk with warning
             writeln!(
                 stderr,
                 "Warning: Multiple stack heads detected. Showing stack from @ to trunk."
             )?;
-            self.jj.get_stack_changes("@").await?
+            self.jj.get_stack_ancestors("@").await?
         };
 
         // Fetch all branches once
@@ -50,8 +45,8 @@ impl App {
 
         // Collect all unique branches we need pr_diffs for (changes + their parents)
         let mut branches_needing_diffs = std::collections::HashSet::new();
-        for (change_id, _commit_id) in &changes {
-            let short_change_id = &change_id[..CHANGE_ID_LENGTH.min(change_id.len())];
+        for commit in &changes {
+            let short_change_id = &commit.change_id[..CHANGE_ID_LENGTH.min(commit.change_id.len())];
             let expected_branch =
                 format!("{}{}", self.config.github_branch_prefix, short_change_id);
             if all_branches.contains(&expected_branch) {
@@ -59,15 +54,13 @@ impl App {
             }
 
             // Also collect parent branches
-            if let Ok(commit) = self.jj.get_commit(change_id).await {
-                for parent_change_id in commit.parent_change_ids {
-                    let short_parent_id =
-                        &parent_change_id[..CHANGE_ID_LENGTH.min(parent_change_id.len())];
-                    let parent_branch =
-                        format!("{}{}", self.config.github_branch_prefix, short_parent_id);
-                    if all_branches.contains(&parent_branch) {
-                        branches_needing_diffs.insert(parent_branch);
-                    }
+            for parent_change_id in &commit.parent_change_ids {
+                let short_parent_id =
+                    &parent_change_id[..CHANGE_ID_LENGTH.min(parent_change_id.len())];
+                let parent_branch =
+                    format!("{}{}", self.config.github_branch_prefix, short_parent_id);
+                if all_branches.contains(&parent_branch) {
+                    branches_needing_diffs.insert(parent_branch);
                 }
             }
         }
@@ -89,8 +82,9 @@ impl App {
         // Prepare tasks to fetch PR URLs concurrently
         let pr_url_futures: Vec<_> = changes
             .iter()
-            .map(|(change_id, _commit_id)| {
-                let short_change_id = &change_id[..CHANGE_ID_LENGTH.min(change_id.len())];
+            .map(|commit| {
+                let short_change_id =
+                    &commit.change_id[..CHANGE_ID_LENGTH.min(commit.change_id.len())];
                 let expected_branch =
                     format!("{}{}", self.config.github_branch_prefix, short_change_id);
                 let branch_exists = all_branches.contains(&expected_branch);
@@ -111,28 +105,28 @@ impl App {
         // Get base branches concurrently
         let base_branch_futures: Vec<_> = changes
             .iter()
-            .map(|(change_id, _commit_id)| self.find_previous_branch(change_id))
+            .map(|commit| self.find_previous_branch(&commit.change_id))
             .collect();
         let base_branches = join_all(base_branch_futures).await;
 
         // Display results
-        for (i, (change_id, commit_id)) in changes.iter().enumerate() {
-            let short_change_id = &change_id[..CHANGE_ID_LENGTH.min(change_id.len())];
+        for (i, commit) in changes.iter().enumerate() {
+            let short_change_id = &commit.change_id[..CHANGE_ID_LENGTH.min(commit.change_id.len())];
             let expected_branch =
                 format!("{}{}", self.config.github_branch_prefix, short_change_id);
             let pr_url_result = &pr_urls[i];
             let base_branch_result = &base_branches[i];
 
             // Get commit and extract title from message
-            let commit = self.jj.get_commit(&commit_id.0).await?;
+            let commit = self.jj.get_commit(&commit.commit_id.0).await?;
             let commit_title = commit.message.title.as_deref().unwrap_or("");
 
             // Get abbreviated change ID (4 chars, matching jj status default)
-            let abbreviated_change_id = &change_id[..4.min(change_id.len())];
+            let abbreviated_change_id = &commit.change_id[..4.min(commit.change_id.len())];
 
             // Check if parent PR is outdated
             let parent_pr_outdated = self
-                .is_parent_pr_outdated(change_id, &all_branches, &pr_diffs)
+                .is_parent_pr_outdated(&commit.change_id, &all_branches, &pr_diffs)
                 .await?;
 
             // Get base branch (or default to empty string if error)
@@ -140,8 +134,7 @@ impl App {
 
             self.show_change_status_with_data(
                 &expected_branch,
-                change_id,
-                commit_id,
+                &commit,
                 &current_commit.change_id,
                 &all_branches,
                 pr_url_result,
@@ -162,9 +155,8 @@ impl App {
     async fn show_change_status_with_data(
         &self,
         expected_branch: &str,
-        change_id: &str,
-        commit_id: &git::CommitId,
-        current_change_id: &str,
+        commit: &jujutsu::JujutsuCommit,
+        current_change_id: &String,
         all_branches: &[String],
         pr_url_result: &Result<Option<String>>,
         commit_title: &str,
@@ -174,7 +166,7 @@ impl App {
         pr_diffs: &HashMap<String, String>,
         stdout: &mut impl std::io::Write,
     ) -> Result<()> {
-        let is_current = change_id == current_change_id;
+        let is_current = commit.change_id == *current_change_id;
         let branch_exists = all_branches.contains(&expected_branch.to_string());
 
         // Determine status symbol
@@ -183,7 +175,7 @@ impl App {
             match pr_url_result {
                 Ok(Some(_)) => {
                     // Compare local single commit diff vs cumulative PR diff from cache
-                    let local_diff = self.git.get_commit_diff(commit_id).await;
+                    let local_diff = self.git.get_commit_diff(&commit.commit_id).await;
 
                     match local_diff {
                         Ok(local_diff) => {

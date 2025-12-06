@@ -37,11 +37,11 @@ impl App {
         &self,
         commit: &crate::clients::jujutsu::JujutsuCommit,
     ) -> Result<()> {
-        let trunk_commit = self.jj.get_trunk_commit_id().await?;
+        let trunk_commit = self.jj.get_trunk().await?;
 
         if self
-            .jj
-            .is_ancestor(&commit.commit_id.0, &trunk_commit)
+            .git
+            .is_ancestor(&commit.commit_id, &trunk_commit.commit_id)
             .await?
         {
             bail!(
@@ -75,8 +75,8 @@ impl App {
         let trunk_commit = self.jj.get_commit("trunk()").await?;
         if parent_change_id == &trunk_commit.change_id {
             let trunk_branches = self
-                .jj
-                .get_git_remote_branches(&trunk_commit.change_id)
+                .git
+                .get_git_remote_branches(&trunk_commit.commit_id)
                 .await?;
             if trunk_branches.is_empty() {
                 bail!("Trunk has no remote branch. Push trunk to remote first.");
@@ -92,7 +92,7 @@ impl App {
     pub(crate) async fn check_parent_prs_up_to_date(&self, revision: &str) -> Result<()> {
         // Get all changes in the stack from revision back to trunk
         let commit = self.jj.get_commit(revision).await?;
-        let stack_changes = self.jj.get_stack_changes(&commit.commit_id.0).await?;
+        let stack_changes = self.jj.get_stack_ancestors(&commit.commit_id.0).await?;
 
         // Fetch all branches once
         let all_branches = self
@@ -103,17 +103,14 @@ impl App {
         // Collect all branches that exist in the stack (excluding current revision)
         let branches_to_check: Vec<_> = stack_changes
             .iter()
-            .filter(|(_, commit_id_in_stack)| commit_id_in_stack != &commit.commit_id)
-            .filter_map(|(change_id, _commit_id_in_stack)| {
-                let short_change_id = &change_id[..CHANGE_ID_LENGTH.min(change_id.len())];
+            .filter(|stack_commit| stack_commit.commit_id != commit.commit_id)
+            .filter_map(|stack_commit| {
+                let short_change_id =
+                    &stack_commit.change_id[..CHANGE_ID_LENGTH.min(stack_commit.change_id.len())];
                 let expected_branch =
                     format!("{}{}", self.config.github_branch_prefix, short_change_id);
                 if all_branches.contains(&expected_branch) {
-                    Some((
-                        change_id.clone(),
-                        _commit_id_in_stack.clone(),
-                        expected_branch,
-                    ))
+                    Some((stack_commit, expected_branch))
                 } else {
                     None
                 }
@@ -123,7 +120,7 @@ impl App {
         // Fetch all pr_diffs in parallel
         let pr_diff_futures: Vec<_> = branches_to_check
             .iter()
-            .map(|(_, _, branch)| async move {
+            .map(|(_, branch)| async move {
                 let diff = self.gh.pr_diff(branch).await;
                 (branch.clone(), diff)
             })
@@ -131,11 +128,11 @@ impl App {
         let pr_diff_results = futures_util::future::join_all(pr_diff_futures).await;
 
         // Check each change in the stack
-        for ((change_id, _, expected_branch), (_, pr_diff_result)) in
+        for ((stack_commit, expected_branch), (_, pr_diff_result)) in
             branches_to_check.iter().zip(pr_diff_results.iter())
         {
             // Get the commit for this change
-            let commit_in_stack = self.jj.get_commit(change_id).await?;
+            let commit_in_stack = self.jj.get_commit(&stack_commit.change_id).await?;
 
             // Compare local single commit diff vs cumulative PR diff from GitHub
             let local_diff = self.git.get_commit_diff(&commit_in_stack.commit_id).await?;

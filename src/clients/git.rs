@@ -1,5 +1,3 @@
-#![allow(async_fn_in_trait)]
-
 use std::fmt::Display;
 
 use anyhow::Context;
@@ -224,5 +222,39 @@ impl GitClient {
 
         // Don't trim - we want to preserve trailing newlines to match GitHub API diff format
         Ok(String::from_utf8(output.stdout)?)
+    }
+
+    /// Get the remote git branches for a commit.
+    /// Returns branch names with "origin/" prefix stripped (e.g., ["main", "test/abc12345"])
+    pub async fn get_git_remote_branches(&self, commit_id: &CommitId) -> Result<Vec<String>> {
+        let output = Command::new("git")
+            .current_dir(&self.path)
+            .args([
+                "branch",
+                "-r",
+                "--points-at",
+                &commit_id.0,
+                "--format=%(refname:short)",
+            ])
+            .output()
+            .await
+            .context("Failed to execute git command")?;
+
+        if !output.status.success() {
+            bail!(
+                "git command failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+
+        let output_str = String::from_utf8(output.stdout)?.trim().to_string();
+
+        // Parse git refs and filter for remote branches only
+        let branches: Vec<String> = output_str
+            .lines()
+            .filter_map(|line| line.strip_prefix("origin/").map(|s| s.to_string()))
+            .collect();
+
+        Ok(branches)
     }
 }

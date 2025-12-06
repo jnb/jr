@@ -1,5 +1,3 @@
-#![allow(async_fn_in_trait)]
-
 use std::collections::HashMap;
 use std::path;
 use std::sync::Mutex;
