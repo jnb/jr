@@ -1,4 +1,4 @@
-pub mod ops;
+pub mod clients;
 
 mod app;
 pub mod commands;

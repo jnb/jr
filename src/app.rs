@@ -4,10 +4,10 @@ use anyhow::Result;
 use anyhow::anyhow;
 use anyhow::bail;
 
+use crate::clients::git::GitClient;
+use crate::clients::github::GithubClient;
+use crate::clients::jujutsu::JujutsuClient;
 use crate::config::Config;
-use crate::ops::git::GitClient;
-use crate::ops::github::GithubClient;
-use crate::ops::jujutsu::JujutsuClient;
 
 /// Length of the change ID to use in GitHub branch names
 pub const CHANGE_ID_LENGTH: usize = 8;
@@ -35,7 +35,7 @@ impl App {
     /// Validate that a commit is not already merged to trunk
     pub(crate) async fn validate_not_merged_to_main(
         &self,
-        commit: &crate::ops::jujutsu::JujutsuCommit,
+        commit: &crate::clients::jujutsu::JujutsuCommit,
     ) -> Result<()> {
         let trunk_commit = self.jj.get_trunk_commit_id().await?;
 

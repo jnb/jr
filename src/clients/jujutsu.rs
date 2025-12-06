@@ -7,12 +7,12 @@ use anyhow::Result;
 use anyhow::bail;
 use tokio::process::Command;
 
-use crate::ops::git;
+use super::git;
 
 // -----------------------------------------------------------------------------
 // Types
 
-/// Operations on a Jujutsu version control repository.
+/// Jujutsu client.
 pub struct JujutsuClient {
     path: path::PathBuf,
 }
@@ -32,7 +32,7 @@ pub struct JujutsuCommitMessage {
 }
 
 // -----------------------------------------------------------------------------
-// Jujutsu impl
+// JujutsuClient impl
 
 impl JujutsuClient {
     pub fn new(path: path::PathBuf) -> Self {

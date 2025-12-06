@@ -16,7 +16,7 @@ mod utils;
 
 use std::sync::LazyLock;
 
-use jr::ops::github::GithubClient;
+use jr::clients::github::GithubClient;
 use log::debug;
 use serde::Deserialize;
 use tracing::instrument;
@@ -151,7 +151,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
         GITHUB_BRANCH_PREFIX.to_string(),
         TEST_CONFIG.github_token.clone(),
     );
-    let github = jr::ops::github::GithubClient::new(
+    let github = jr::clients::github::GithubClient::new(
         TEST_CONFIG.github_token.clone(),
         test_dir.path().into(),
     )

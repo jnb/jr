@@ -10,7 +10,7 @@ use tokio::process::Command;
 // -----------------------------------------------------------------------------
 // Types
 
-/// Operations for interacting with Git
+/// Git client.
 pub struct GitClient {
     path: std::path::PathBuf,
 }
@@ -25,7 +25,7 @@ impl Display for CommitId {
 }
 
 // -----------------------------------------------------------------------------
-// Git impl
+// GitClient impl
 
 impl GitClient {
     pub fn new(path: std::path::PathBuf) -> Self {

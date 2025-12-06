@@ -7,8 +7,8 @@ use log::debug;
 
 use crate::App;
 use crate::app::CHANGE_ID_LENGTH;
+use crate::clients::git;
 use crate::diff_utils::normalize_diff;
-use crate::ops::git;
 
 impl App {
     pub async fn cmd_status(

@@ -5,7 +5,7 @@ use clap::Parser;
 use clap::Subcommand;
 use jr::App;
 use jr::Config;
-use jr::ops::github::GithubClient;
+use jr::clients::github::GithubClient;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::Layer as _;
 use tracing_subscriber::layer::SubscriberExt as _;

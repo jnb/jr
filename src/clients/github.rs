@@ -15,7 +15,7 @@ use super::github_curl::GithubCurlClient;
 // -----------------------------------------------------------------------------
 // Types
 
-/// Client to interact with GitHub API.
+/// Github client.
 pub struct GithubClient {
     owner: String,
     repo: String,
