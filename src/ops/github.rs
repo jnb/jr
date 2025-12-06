@@ -105,22 +105,6 @@ impl GithubClient {
         Ok((owner, repo))
     }
 
-    /// Helper to get PR number from branch name
-    #[instrument(skip_all)]
-    async fn get_pr_number(&self, branch: &str) -> Result<Option<u64>> {
-        let url = format!(
-            "https://api.github.com/repos/{}/{}/pulls?head={}:{}&state=all",
-            self.owner, self.repo, self.owner, branch
-        );
-
-        let response = self
-            .http_client
-            .get(&url, "application/vnd.github+json")
-            .await?;
-        let prs: Vec<PullRequest> = serde_json::from_str(&response)?;
-        Ok(prs.first().map(|pr| pr.number))
-    }
-
     #[instrument(skip_all)]
     pub async fn find_branches_with_prefix(&self, prefix: &str) -> Result<Vec<String>> {
         let url = format!(
@@ -256,6 +240,22 @@ impl GithubClient {
         self.http_client
             .get(&url, "application/vnd.github.diff")
             .await
+    }
+
+    /// Helper to get PR number from branch name
+    #[instrument(skip_all)]
+    async fn get_pr_number(&self, branch: &str) -> Result<Option<u64>> {
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/pulls?head={}:{}&state=all",
+            self.owner, self.repo, self.owner, branch
+        );
+
+        let response = self
+            .http_client
+            .get(&url, "application/vnd.github+json")
+            .await?;
+        let prs: Vec<PullRequest> = serde_json::from_str(&response)?;
+        Ok(prs.first().map(|pr| pr.number))
     }
 
     /// Delete a remote branch
