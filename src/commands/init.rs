@@ -7,6 +7,7 @@ use crate::App;
 use crate::config::Config;
 
 impl App {
+    #[rustfmt::skip]
     pub async fn cmd_init(&self, stdout: &mut impl std::io::Write) -> Result<()> {
         let current_config = Config::load()
             .unwrap_or_else(|_| Config::new(Config::default_github_branch_prefix(), String::new()));
@@ -15,18 +16,20 @@ impl App {
             prompt_with_default("GitHub branch prefix", current_config.github_branch_prefix)?;
 
         writeln!(stdout)?;
-        writeln!(
-            stdout,
-            "Create a fine-grained personal access token for this repository at:"
-        )?;
-        writeln!(
-            stdout,
-            "https://github.com/settings/personal-access-tokens/new"
-        )?;
+        writeln!(stdout, "Either:")?;
         writeln!(stdout)?;
-        writeln!(stdout, "Required permissions:")?;
-        writeln!(stdout, "  - Contents: Read and write")?;
-        writeln!(stdout, "  - Pull requests: Read and write")?;
+        writeln!(stdout, " - Create a fine-grained Personal Access Token for this repository at:")?;
+        writeln!(stdout, "   https://github.com/settings/personal-access-tokens/new")?;
+        writeln!(stdout)?;
+        writeln!(stdout, "   Required permissions:")?;
+        writeln!(stdout, "    - Contents: Read and write")?;
+        writeln!(stdout, "    - Pull requests: Read and write")?;
+        writeln!(stdout)?;
+        writeln!(stdout, " - Or, create a classic Personal Access Token at:")?;
+        writeln!(stdout, "   https://github.com/settings/tokens/new")?;
+        writeln!(stdout)?;
+        writeln!(stdout, "   Required scopes:")?;
+        writeln!(stdout, "    - Repo")?;
         writeln!(stdout)?;
 
         let github_token =
