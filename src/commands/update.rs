@@ -19,22 +19,20 @@ impl App {
         let pr_branch = commit
             .change_id
             .branch_name(&self.config.github_branch_prefix);
+        let old_pr_tip = self.git.get_branch_tip(&pr_branch).await.context(format!(
+            "PR branch {} does not exist. Use 'jr create' to create a new PR.",
+            pr_branch
+        ))?;
+        if !self.gh.pr_is_open(&pr_branch).await? {
+            bail!(
+                "No open PR found for branch {}. The PR may have been closed or merged.",
+                pr_branch
+            );
+        }
         let base_branch = self.find_previous_branch(revision).await?;
 
         let tree = self.git.get_tree(&commit.commit_id).await?;
 
-        // PR branch must exist for update
-        let _existing_pr_branch = self.git.get_branch_tip(&pr_branch).await.context(format!(
-            "PR branch {} does not exist. Use 'jr create' to create a new PR.",
-            pr_branch
-        ))?;
-
-        // Get both parents for merge commit
-        let old_pr_tip = self
-            .git
-            .get_branch_tip(&pr_branch)
-            .await
-            .context(format!("PR branch {} does not exist", pr_branch))?;
         let base_tip = self
             .git
             .get_branch_tip(&base_branch)
