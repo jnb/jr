@@ -1,4 +1,4 @@
-# Jujusu Review
+# Jujutsu Review
 
 `jr` (Jujutsu Review) is a Rust-based CLI tool for translating Jujutsu commits
 into stacked GitHub PRs.
