@@ -17,18 +17,14 @@ impl App {
     ) -> Result<()> {
         let current_commit = self.jj.get_commit("@").await?;
 
-        let heads = self.jj.get_stack_heads("@").await?;
-
-        // Collect all changes to process
-        let changes = if heads.is_empty() {
+        let stack_heads = self.jj.get_stack_heads("@").await?;
+        let stack_commits = if stack_heads.is_empty() {
             // Current commit is on trunk or no stack exists
-            vec![current_commit.clone()]
-        } else if heads.len() == 1 {
-            // Single head - show from head back to trunk
-            let head_commit_id = &heads[0].commit_id.0;
+            return Ok(());
+        } else if stack_heads.len() == 1 {
+            let head_commit_id = &stack_heads[0].commit_id.0;
             self.jj.get_stack_ancestors(head_commit_id).await?
         } else {
-            // Multiple heads detected - show from @ to trunk with warning
             writeln!(
                 stderr,
                 "Warning: Multiple stack heads detected. Showing stack from @ to trunk."
@@ -36,26 +32,25 @@ impl App {
             self.jj.get_stack_ancestors("@").await?
         };
 
-        // Fetch all branches once
-        let all_branches = self
+        let all_pr_branches = self
             .git
             .find_branches_with_prefix(&self.config.github_branch_prefix)
             .await?;
 
         // Collect all unique branches we need pr_diffs for (changes + their parents)
         let mut branches_needing_diffs = std::collections::HashSet::new();
-        for commit in &changes {
+        for commit in &stack_commits {
             let expected_branch = commit
                 .change_id
                 .branch_name(&self.config.github_branch_prefix);
-            if all_branches.contains(&expected_branch) {
+            if all_pr_branches.contains(&expected_branch) {
                 branches_needing_diffs.insert(expected_branch);
             }
 
             // Also collect parent branches
             for parent_change_id in &commit.parent_change_ids {
                 let parent_branch = parent_change_id.branch_name(&self.config.github_branch_prefix);
-                if all_branches.contains(&parent_branch) {
+                if all_pr_branches.contains(&parent_branch) {
                     branches_needing_diffs.insert(parent_branch);
                 }
             }
@@ -76,13 +71,13 @@ impl App {
             .collect();
 
         // Prepare tasks to fetch PR URLs concurrently
-        let pr_url_futures: Vec<_> = changes
+        let pr_url_futures: Vec<_> = stack_commits
             .iter()
             .map(|commit| {
                 let expected_branch = commit
                     .change_id
                     .branch_name(&self.config.github_branch_prefix);
-                let branch_exists = all_branches.contains(&expected_branch);
+                let branch_exists = all_pr_branches.contains(&expected_branch);
 
                 async move {
                     if branch_exists {
@@ -98,14 +93,14 @@ impl App {
         let pr_urls = join_all(pr_url_futures).await;
 
         // Get base branches concurrently
-        let base_branch_futures: Vec<_> = changes
+        let base_branch_futures: Vec<_> = stack_commits
             .iter()
             .map(|commit| self.find_previous_branch(&commit.change_id.0))
             .collect();
         let base_branches = join_all(base_branch_futures).await;
 
         // Display results
-        for (i, commit) in changes.iter().enumerate() {
+        for (i, commit) in stack_commits.iter().enumerate() {
             let expected_branch = commit
                 .change_id
                 .branch_name(&self.config.github_branch_prefix);
@@ -121,7 +116,7 @@ impl App {
 
             // Check if parent PR is outdated
             let parent_pr_outdated = self
-                .is_parent_pr_outdated(&commit.change_id.0, &all_branches, &pr_diffs)
+                .is_parent_pr_outdated(&commit.change_id.0, &all_pr_branches, &pr_diffs)
                 .await?;
 
             // Get base branch (or default to empty string if error)
@@ -131,7 +126,7 @@ impl App {
                 &expected_branch,
                 &commit,
                 &current_commit.change_id,
-                &all_branches,
+                &all_pr_branches,
                 pr_url_result,
                 commit_title,
                 abbreviated_change_id,
