@@ -3,6 +3,7 @@ use std::fmt::Display;
 use anyhow::Context;
 use anyhow::Result;
 use anyhow::bail;
+use anyhow::ensure;
 use tokio::process::Command;
 
 // -----------------------------------------------------------------------------
@@ -162,6 +163,7 @@ impl GitClient {
 
     /// Push a commit directly to a remote branch without creating a local branch
     pub async fn push_commit_to_branch(&self, commit_id: &CommitId, branch: &str) -> Result<()> {
+        ensure!(!["main", "master", "dev", "development", "stage", "staging"].contains(&branch));
         let refspec = format!("{}:refs/heads/{}", commit_id.0, branch);
         let output = Command::new("git")
             .current_dir(&self.path)
