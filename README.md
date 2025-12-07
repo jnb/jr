@@ -1,7 +1,15 @@
 # Jujusu Review
 
 `jr` (Jujutsu Review) is a Rust-based CLI tool for translating Jujutsu commits
-onto stacked GitHub PRs.
+into stacked GitHub PRs.
+
+NOTE: This is alpha quality software.  Although I'm using it myself, it hasn't
+seen extensive use in the wild.  There will be bugs.
+
+`jr` operates by associating each Jujtsu change with a remote "PR branch".  As
+the change evolves, `jr` will (i) add new commits to the PR branch in order to
+keep its contents synchronized, and (ii) use the GitHub API to update the
+corresponding PR.
 
 This tool is inspired by:
 - Phabraciator Arcanist (`arc`) CLI tool
