@@ -87,16 +87,26 @@ In more detail:
 
 ### One Jujutsu commit per PR
 
-This is what I use.
+This keeps things simple, and is what I use.
 
 ## Implementation
 
-`jr` is just some coordination glue; it shells-out to `jj`, `git` and `curl` to
-perform the actual work.  (It could have been implemented as a shell script,
-although the results wouldn't have been pretty.)  I chose this approach in order
-to minimize the number of Rust dependencies.  And, I could probably still remove
-a few more dependencies.
+`jr` is just some coordination glue; it uses `jj`, `git` and `curl` to perform
+the actual work.  (It could have been implemented as a shell script, although
+the results wouldn't have been pretty.)  I chose this approach in order to
+minimize the number of Rust dependencies.  And, I could probably still remove a
+few more dependencies.
 
 Note that we're using `curl` instead of the `gh` GitHub CLI because you might
-not have `gh` installed (and it's not that hard to make a few cURL requests to
+not have `gh` installed (and it's not that hard to make a few curl requests to
 the GitHub API).
+
+## Limitations
+
+The PR branch name is computed by appending the first eight digits of the
+Jujutsu change ID to the configured branch prefix.  There is currently no way to
+override this, although I can imagine extending the current configuration system
+to accomodate this.
+
+The synchronization is strictly one-way; there is no way to update (or recreate)
+a set of Jujutsu changes from a set of stacked GitHub PRs.

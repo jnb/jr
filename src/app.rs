@@ -9,9 +9,6 @@ use crate::clients::github::GithubClient;
 use crate::clients::jujutsu::JujutsuClient;
 use crate::config::Config;
 
-/// Length of the change ID to use in GitHub branch names
-pub const CHANGE_ID_LENGTH: usize = 8;
-
 pub struct App {
     pub config: Config,
     pub gh: GithubClient,

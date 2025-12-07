@@ -6,7 +6,9 @@ use anyhow::bail;
 use tokio::process::Command;
 
 use super::git;
-use crate::app::CHANGE_ID_LENGTH;
+
+/// Length of the change ID to use in GitHub branch names
+pub const GITHUB_CHANGE_ID_LENGTH: usize = 8;
 
 // -----------------------------------------------------------------------------
 // Types
@@ -183,7 +185,10 @@ impl JujutsuClient {
 
 impl JujutsuChangeId {
     pub fn branch_name(&self, prefix: &str) -> String {
-        format!("{prefix}{}", &self.0[..CHANGE_ID_LENGTH.min(self.0.len())])
+        format!(
+            "{prefix}{}",
+            &self.0[..GITHUB_CHANGE_ID_LENGTH.min(self.0.len())]
+        )
     }
 
     pub fn short_id(&self) -> String {
