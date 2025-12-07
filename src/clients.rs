@@ -3,7 +3,7 @@
 //! This module contains the integration layers for the three systems that `jr` coordinates:
 //!
 //! - [`git`]: Low-level Git operations (tree parsing, commit creation, branch updates, pushing)
-//! - [`github`]: GitHub PR management via GitHub CLI (search, create, update PRs)
+//! - [`github`]: GitHub PR management via GitHub CLI
 //! - [`github_curl`]: Curl-based HTTP client for making GitHub API requests
 //! - [`jujutsu`]: Jujutsu operations for extracting commit and change IDs
 //!

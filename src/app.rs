@@ -83,8 +83,10 @@ impl App {
         bail!("Parent commit has no PR branch. Create parent PR first (bottom-up).")
     }
 
-    /// Check if any parent PRs in the stack are outdated
-    /// Returns an error if any parent PR has a local single commit diff that doesn't match cumulative remote diff
+    /// Check if any parent PRs in the stack are outdated or need restacking
+    /// Returns an error if any parent PR:
+    /// - Has a local single commit diff that doesn't match cumulative remote diff (needs updating)
+    /// - Has a base branch that has moved forward (needs restacking)
     pub(crate) async fn check_parent_prs_up_to_date(&self, revision: &str) -> Result<()> {
         // Get all changes in the stack from revision back to trunk
         let commit = self.jj.get_commit(revision).await?;
@@ -129,7 +131,7 @@ impl App {
             // Get the commit for this change
             let commit_in_stack = self.jj.get_commit(&stack_commit.change_id.0).await?;
 
-            // Compare local single commit diff vs cumulative PR diff from GitHub
+            // Check 1: Compare local single commit diff vs cumulative PR diff from GitHub
             let local_diff = self.git.get_commit_diff(&commit_in_stack.commit_id).await?;
             let pr_diff = pr_diff_result.as_ref().map_err(|e| anyhow!("{}", e))?;
 
@@ -137,6 +139,20 @@ impl App {
                 bail!(
                     "Cannot update PR: parent PR {} is out of date. Update parent PRs first (starting from the bottom of the stack).",
                     expected_branch
+                );
+            }
+
+            // Check 2: Check if the base branch has moved forward (parent needs restacking)
+            let pr_tip = self.git.get_branch_tip(expected_branch).await?;
+            let base_branch = self.find_previous_branch(&stack_commit.change_id.0).await?;
+            let base_tip = self.git.get_branch_tip(&base_branch).await?;
+            let base_has_changed = !self.git.is_ancestor(&base_tip, &pr_tip).await?;
+
+            if base_has_changed {
+                bail!(
+                    "Cannot update PR: parent PR {} needs restacking. Its base branch '{}' has been updated. Run 'jr restack' on the parent first.",
+                    expected_branch,
+                    base_branch
                 );
             }
         }

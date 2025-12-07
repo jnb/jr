@@ -50,10 +50,10 @@ impl App {
         let commit_diff = self.git.get_commit_diff(&commit.commit_id).await?;
         let pr_diff = self.gh.pr_diff(&pr_branch).await?;
         if normalize_diff(&commit_diff) != normalize_diff(&pr_diff) {
-            bail!(
-                "Cannot restack: commit has local changes.\n
-                Use 'jr update -m \"<message>\"' to update with your changes."
-            );
+            bail!(concat!(
+                "Cannot restack: commit has local changes.\n",
+                "Use 'jr update -m \"<message>\"' to update with your changes."
+            ));
         }
 
         let base_tip = self

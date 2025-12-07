@@ -165,6 +165,24 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     ");
 
     // -------------------------------------------------------------------------
+    // Try updating PR for Alpha when no PR exists
+
+    debug!("Updating PR for alpha");
+    let mut out = Vec::new();
+    let res = app
+        .cmd_update("description(Alpha)", "message", &mut out)
+        .await;
+    assert_snapshot_filtered!(res.err().unwrap(), INSTA_FILTERS, @"PR branch [BRANCH] does not exist. Use 'jr create' to create a new PR.");
+
+    // -------------------------------------------------------------------------
+    // Try restacking PR for Alpha when no PR exists
+
+    debug!("Restacking alpha");
+    let mut out = Vec::new();
+    let res = app.cmd_restack("description(Alpha)", &mut out).await;
+    assert_snapshot_filtered!(res.err().unwrap(), INSTA_FILTERS, @"PR branch [BRANCH] does not exist. Use 'jr create' to create a new PR.");
+
+    // -------------------------------------------------------------------------
     // Create PR for Alpha
 
     debug!("Creating PR for alpha");
@@ -180,6 +198,48 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     ✓ [CHGID] Alpha
       https://github.com/[USER]/[REPO]/[PRID]
     ");
+
+    // -------------------------------------------------------------------------
+    // Try recreating PR for Alpha when PR already exists
+
+    debug!("Recreating PR for alpha");
+    let mut out = Vec::new();
+    let res = app
+        .cmd_create("description(Alpha) & ~remote_bookmarks()", &mut out)
+        .await;
+    assert_snapshot_filtered!(res.err().unwrap(), INSTA_FILTERS, @"PR branch already exists: [BRANCH]");
+
+    // -------------------------------------------------------------------------
+    // Try updating PR for Alpha when unchanged
+
+    debug!("Updating PR for alpha");
+    let mut out = Vec::new();
+    let res = app
+        .cmd_update(
+            "description(Alpha) & ~remote_bookmarks()",
+            "message",
+            &mut out,
+        )
+        .await;
+    insta::assert_snapshot!(res.err().unwrap(), @"No changes to push; PR is already up to date");
+
+    // -------------------------------------------------------------------------
+    // Try restacking PR for Alpha when unchanged
+
+    debug!("Restacking PR for alpha");
+    let mut out = Vec::new();
+    let res = app
+        .cmd_restack("description(Alpha) & ~remote_bookmarks()", &mut out)
+        .await;
+    insta::assert_snapshot!(res.err().unwrap(), @"Base hasn't changed; no need to restack");
+
+    // -------------------------------------------------------------------------
+    // Try creating PR for Gamma when PR for Beta hasn't yet been created
+
+    debug!("Creating PR for gamma");
+    let mut out = Vec::new();
+    let res = app.cmd_create("description(Gamma)", &mut out).await;
+    insta::assert_snapshot!(res.err().unwrap(), @"Parent commit has no PR branch. Create parent PR first (bottom-up).");
 
     // -------------------------------------------------------------------------
     // Create PR for Beta
@@ -222,7 +282,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     // Edit Alpha
 
     debug!("Editing alpha");
-    utils::jj_edit(test_dir.path(), "description(Alpha) & mine()").await?;
+    utils::jj_edit(test_dir.path(), "description(Alpha) & ~remote_bookmarks()").await?;
     tokio::fs::write(test_dir.path().join("alpha"), "alpha1\n").await?;
 
     debug!("Getting status");
@@ -237,21 +297,28 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     ");
 
     // -------------------------------------------------------------------------
+    // Try restacking Alpha
+
+    debug!("Restacking PR for alpha");
+    let mut out = Vec::new();
+    let res = app
+        .cmd_restack("description(Alpha) & ~remote_bookmarks()", &mut out)
+        .await;
+    insta::assert_snapshot!(res.err().unwrap(), @r#"
+    Cannot restack: commit has local changes.
+    Use 'jr update -m "<message>"' to update with your changes.
+    "#);
+
+    // -------------------------------------------------------------------------
     // Update Alpha
 
     debug!("Updating alpha");
     let (out, _) = run_and_capture!(|out, _| app.cmd_update(
-        "description(Alpha) & mine()",
+        "description(Alpha) & ~remote_bookmarks()",
         "Update alpha",
         out
     ));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
-    Change ID: [CHGID]
-    Commit ID: [OBJID]
-    PR branch: [BRANCH]
-    Base branch: master
-    Tree: [OBJID]
-    PR branch [BRANCH] exists
     Created new commit: [OBJID]
     Pushed PR branch [BRANCH]
     Updated PR for [BRANCH] with base master
@@ -270,10 +337,21 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     ");
 
     // -------------------------------------------------------------------------
+    // Try restacking Gamma when Beta hasn't yet been restacked
+
+    debug!("Restacking gamma");
+    let mut out = Vec::new();
+    let res = app
+        .cmd_restack("description(Gamma) & ~remote_bookmarks()", &mut out)
+        .await;
+    assert_snapshot_filtered!(res.err().unwrap(), INSTA_FILTERS, @"Cannot update PR: parent PR [BRANCH] needs restacking. Its base branch '[BRANCH]' has been updated. Run 'jr restack' on the parent first.");
+
+    // -------------------------------------------------------------------------
     // Restack Beta
 
     debug!("Restacking beta");
-    let (out, _) = run_and_capture!(|out, _| app.cmd_restack("description(Beta) & mine()", out));
+    let (out, _) =
+        run_and_capture!(|out, _| app.cmd_restack("description(Beta) & ~remote_bookmarks()", out));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @"Updated PR: https://github.com/[USER]/[REPO]/[PRID]");
 
     debug!("Gettings status");
@@ -291,7 +369,8 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     // Restack Gamma
 
     debug!("Restacking gamma");
-    let (out, _) = run_and_capture!(|out, _| app.cmd_restack("description(Gamma) & mine()", out));
+    let (out, _) =
+        run_and_capture!(|out, _| app.cmd_restack("description(Gamma) & ~remote_bookmarks()", out));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @"Updated PR: https://github.com/[USER]/[REPO]/[PRID]");
 
     debug!("Getting status");

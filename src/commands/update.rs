@@ -11,35 +11,23 @@ impl App {
         message: &str,
         stdout: &mut impl std::io::Write,
     ) -> Result<()> {
-        // Get commit information from jj
         let commit = self.jj.get_commit(revision).await?;
-
-        writeln!(stdout, "Change ID: {}", commit.change_id)?;
-        writeln!(stdout, "Commit ID: {}", commit.commit_id)?;
 
         self.validate_not_merged_to_main(&commit).await?;
         self.check_parent_prs_up_to_date(revision).await?;
 
-        // PR branch names: current and base
         let pr_branch = commit
             .change_id
             .branch_name(&self.config.github_branch_prefix);
         let base_branch = self.find_previous_branch(revision).await?;
 
-        writeln!(stdout, "PR branch: {}", pr_branch)?;
-        writeln!(stdout, "Base branch: {}", base_branch)?;
-
-        // Get the tree from the current Jujutsu commit (represents current state)
         let tree = self.git.get_tree(&commit.commit_id).await?;
-        writeln!(stdout, "Tree: {}", tree)?;
 
         // PR branch must exist for update
         let _existing_pr_branch = self.git.get_branch_tip(&pr_branch).await.context(format!(
             "PR branch {} does not exist. Use 'jr create' to create a new PR.",
             pr_branch
         ))?;
-
-        writeln!(stdout, "PR branch {} exists", pr_branch)?;
 
         // Get both parents for merge commit
         let old_pr_tip = self
@@ -84,10 +72,8 @@ impl App {
             commit
         };
 
-        // Only update if there are actual changes
         if new_commit == old_pr_tip {
-            writeln!(stdout, "No changes to push - PR is already up to date")?;
-            return Ok(());
+            bail!("No changes to push; PR is already up to date");
         }
 
         // Push commit directly to PR branch
