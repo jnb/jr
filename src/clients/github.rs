@@ -23,7 +23,11 @@ pub struct GithubClient {
     owner: String,
     repo: String,
     http_client: GithubCurlClient,
+    // Local caching, significantly speeds up integration tests where we reuse
+    // the same GitHub client.  Assumes that each branch is associated with a
+    // single PR (true for us).
     branch_to_pr: Mutex<HashMap<String, Option<PullRequest>>>,
+    // Cached PR diff.  Invalidated on PR update.
     pr_number_to_diff: Mutex<HashMap<u64, String>>,
 }
 
