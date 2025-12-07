@@ -38,7 +38,7 @@ impl App {
 
         let tree = self.git.get_tree(&commit.commit_id).await?;
 
-        let parent_commit = self
+        let base_tip = self
             .git
             .get_branch_tip(&base_branch)
             .await
@@ -46,7 +46,7 @@ impl App {
 
         let new_commit = self
             .git
-            .commit_tree(&tree, vec![&parent_commit], &commit.full_message())
+            .commit_tree(&tree, vec![&base_tip], &commit.full_message())
             .await?;
 
         self.git

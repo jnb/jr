@@ -274,19 +274,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
 
     debug!("Restacking beta");
     let (out, _) = run_and_capture!(|out, _| app.cmd_restack("description(Beta) & mine()", out));
-    assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
-    Change ID: [CHGID]
-    Commit ID: [OBJID]
-    PR branch: [BRANCH]
-    Base branch: [BRANCH]
-    Tree: [OBJID]
-    PR branch [BRANCH] exists
-    Detected pure restack (no changes to this commit)
-    Created new merge commit: [OBJID]
-    Pushed PR branch [BRANCH]
-    Updated PR for [BRANCH] with base [BRANCH]
-    PR URL: https://github.com/[USER]/[REPO]/[PRID]
-    ");
+    assert_snapshot_filtered!(out, INSTA_FILTERS, @"Updated PR: https://github.com/[USER]/[REPO]/[PRID]");
 
     debug!("Gettings status");
     let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
@@ -304,19 +292,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
 
     debug!("Restacking gamma");
     let (out, _) = run_and_capture!(|out, _| app.cmd_restack("description(Gamma) & mine()", out));
-    assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
-    Change ID: [CHGID]
-    Commit ID: [OBJID]
-    PR branch: [BRANCH]
-    Base branch: [BRANCH]
-    Tree: [OBJID]
-    PR branch [BRANCH] exists
-    Detected pure restack (no changes to this commit)
-    Created new merge commit: [OBJID]
-    Pushed PR branch [BRANCH]
-    Updated PR for [BRANCH] with base [BRANCH]
-    PR URL: https://github.com/[USER]/[REPO]/[PRID]
-    ");
+    assert_snapshot_filtered!(out, INSTA_FILTERS, @"Updated PR: https://github.com/[USER]/[REPO]/[PRID]");
 
     debug!("Getting status");
     let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
