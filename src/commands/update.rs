@@ -3,8 +3,25 @@ use anyhow::Result;
 use anyhow::bail;
 
 use crate::App;
+use crate::diff_utils::normalize_diff;
 
 impl App {
+    /// Update a pull request in the case where (i) there are local changes, and
+    /// (ii) the base branch may or may not have been updated.
+    ///
+    /// Define the "base branch" as the parent commit's PR branch (or main).
+    ///
+    /// 1. Create a commit:
+    ///    - Use this revision's filesystem snapshot as the commit contents.
+    ///    - If the base branch tip has changed, create a merge commit using the
+    ///      old PR tip and the base branch tip as the two parents.  Else create
+    ///      a regular commit using the base branch tip as the parent.
+    /// 2. Push to the remote PR branch named after this revision's change ID.
+    /// 3. Update the pull request's base branch.
+    ///
+    /// Note: When creating a merge commit we use the Jujutsu revision's tree
+    /// directly, which reflects any conflict resolutions already made in
+    /// Jujutsu, rather than computing a new merge via Git's merge machinery.
     pub async fn cmd_update(
         &self,
         revision: &str,
@@ -33,70 +50,38 @@ impl App {
 
         let tree = self.git.get_tree(&commit.commit_id).await?;
 
+        let commit_diff = self.git.get_commit_diff(&commit.commit_id).await?;
+        let pr_diff = self.gh.pr_diff(&pr_branch).await?;
+        let contents_changed = normalize_diff(&commit_diff) != normalize_diff(&pr_diff);
+
         let base_tip = self
             .git
             .get_branch_tip(&base_branch)
             .await
             .context(format!("Base branch {} does not exist", base_branch))?;
-
-        // Use the provided commit message
-        let commit_message = message;
-
-        // Check if we need to create a new commit
-        let old_pr_tree = self.git.get_tree(&old_pr_tip).await?;
         let base_has_changed = !self.git.is_ancestor(&base_tip, &old_pr_tip).await?;
 
-        let new_commit = if tree == old_pr_tree && !base_has_changed {
-            writeln!(
-                stdout,
-                "Tree unchanged and base hasn't moved, reusing old PR tip commit"
-            )?;
-            old_pr_tip.clone()
-        } else if base_has_changed {
-            // Create merge commit with old PR tip and base as parents
-            let commit = self
-                .git
-                .commit_tree(&tree, vec![&old_pr_tip, &base_tip], commit_message)
-                .await?;
-            writeln!(stdout, "Created new merge commit: {}", commit)?;
-            commit
-        } else {
-            // Tree changed but base hasn't - create regular commit with single parent
-            let commit = self
-                .git
-                .commit_tree(&tree, vec![&old_pr_tip], commit_message)
-                .await?;
-            writeln!(stdout, "Created new commit: {}", commit)?;
-            commit
-        };
-
-        if new_commit == old_pr_tip {
-            bail!("No changes to push; PR is already up to date");
+        if !contents_changed {
+            if !base_has_changed {
+                bail!("No changes detected");
+            } else {
+                bail!("Commit unchanged; use 'jr restack' instead");
+            }
         }
 
-        // Push commit directly to PR branch
+        let parents = if base_has_changed {
+            vec![&old_pr_tip, &base_tip]
+        } else {
+            vec![&old_pr_tip]
+        };
+        let new_commit = self.git.commit_tree(&tree, parents, message).await?;
+
         self.git
             .push_commit_to_branch(&new_commit, &pr_branch)
             .await?;
-        writeln!(stdout, "Pushed PR branch {}", pr_branch)?;
 
-        // Update PR base if needed
-        let pr_url = if self.gh.pr_is_open(&pr_branch).await? {
-            let url = self.gh.pr_edit(&pr_branch, &base_branch).await?;
-            writeln!(
-                stdout,
-                "Updated PR for {} with base {}",
-                pr_branch, base_branch
-            )?;
-            url
-        } else {
-            bail!(
-                "No open PR found for PR branch {}. The PR may have been closed or merged.",
-                pr_branch
-            );
-        };
-
-        writeln!(stdout, "PR URL: {}", pr_url)?;
+        let pr_url = self.gh.pr_edit(&pr_branch, &base_branch).await?;
+        writeln!(stdout, "Updated PR: {}", pr_url)?;
 
         Ok(())
     }

@@ -226,7 +226,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
             &mut out,
         )
         .await;
-    insta::assert_snapshot!(res.err().unwrap(), @"No changes to push; PR is already up to date");
+    insta::assert_snapshot!(res.err().unwrap(), @"No changes detected");
 
     // -------------------------------------------------------------------------
     // Try restacking PR for Alpha when unchanged
@@ -323,12 +323,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
         "Update alpha",
         out
     ));
-    assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
-    Created new commit: [OBJID]
-    Pushed PR branch [BRANCH]
-    Updated PR for [BRANCH] with base master
-    PR URL: https://github.com/[USER]/[REPO]/[PRID]
-    ");
+    assert_snapshot_filtered!(out, INSTA_FILTERS, @"Updated PR: https://github.com/[USER]/[REPO]/[PRID]");
 
     debug!("Getting status");
     let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
