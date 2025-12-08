@@ -1,7 +1,7 @@
-use anyhow::Context;
 use anyhow::bail;
 
 use crate::App;
+use crate::commit::JrCommit;
 
 impl App {
     /// Create a new pull request.
@@ -18,44 +18,37 @@ impl App {
         revision: &str,
         stdout: &mut impl std::io::Write,
     ) -> anyhow::Result<()> {
-        let commit = self.jj.get_commit(revision).await?;
-
-        self.validate_not_merged_to_main(&commit).await?;
         self.check_parent_prs_up_to_date(revision).await?;
 
-        let Some(pr_title) = &commit.message.title else {
+        let commit = JrCommit::new(revision, &self.config, &self.jj, &self.gh, &self.git).await?;
+        if commit.pr_tip.is_some() {
+            bail!("PR branch already exists: {}", commit.pr_branch);
+        }
+
+        let commit_message = commit.message();
+        let Some(pr_title) = &commit_message.title else {
             bail!("Cannot create PR with empty description");
         };
-        let pr_body = commit.message.body.as_deref().unwrap_or("");
+        let pr_body = commit_message.body.as_deref().unwrap_or("");
 
-        let pr_branch = commit
-            .change_id
-            .branch_name(&self.config.github_branch_prefix);
-        if self.git.get_branch_tip(&pr_branch).await.is_ok() {
-            bail!("PR branch already exists: {pr_branch}");
-        }
-        let base_branch = self.find_previous_branch(revision).await?;
-
-        let tree = self.git.get_tree(&commit.commit_id).await?;
-
-        let base_tip = self
-            .git
-            .get_branch_tip(&base_branch)
-            .await
-            .context(format!("Base branch {} does not exist", base_branch))?;
+        let tree = self.git.get_tree(&commit.commit.commit_id).await?;
 
         let new_commit = self
             .git
-            .commit_tree(&tree, vec![&base_tip], &commit.full_message())
+            .commit_tree(
+                &tree,
+                vec![&commit.base_tip.clone().expect("must exist")],
+                &commit.full_message(),
+            )
             .await?;
 
         self.git
-            .push_commit_to_branch(&new_commit, &pr_branch)
+            .push_commit_to_branch(&new_commit, &commit.pr_branch)
             .await?;
 
         let pr_url = self
             .gh
-            .pr_create(&pr_branch, &base_branch, pr_title, pr_body)
+            .pr_create(&commit.pr_branch, &commit.base_branch, pr_title, pr_body)
             .await?;
         writeln!(stdout, "Created PR: {}", pr_url)?;
 

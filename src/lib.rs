@@ -2,6 +2,7 @@ pub mod clients;
 
 mod app;
 pub mod commands;
+mod commit;
 pub mod config;
 pub mod diff_utils;
 mod stack;
