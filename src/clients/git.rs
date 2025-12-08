@@ -102,65 +102,6 @@ impl GitClient {
         ))
     }
 
-    pub async fn update_branch(&self, branch: &str, commit_id: &CommitId) -> Result<()> {
-        let output = Command::new("git")
-            .current_dir(&self.path)
-            .args([
-                "update-ref",
-                &format!("refs/heads/{}", branch),
-                &commit_id.0,
-            ])
-            .output()
-            .await
-            .context("Failed to execute git command")?;
-
-        if !output.status.success() {
-            bail!(
-                "git command failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            );
-        }
-
-        Ok(())
-    }
-
-    pub async fn push_branch(&self, branch: &str) -> Result<()> {
-        let refspec = format!("refs/heads/{}:refs/heads/{}", branch, branch);
-        let output = Command::new("git")
-            .current_dir(&self.path)
-            .args(["push", "-u", "origin", &refspec])
-            .output()
-            .await
-            .context("Failed to execute git command")?;
-
-        if !output.status.success() {
-            bail!(
-                "git command failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            );
-        }
-
-        Ok(())
-    }
-
-    pub async fn delete_local_branch(&self, branch: &str) -> Result<()> {
-        let output = Command::new("git")
-            .current_dir(&self.path)
-            .args(["update-ref", "-d", &format!("refs/heads/{}", branch)])
-            .output()
-            .await
-            .context("Failed to execute git command")?;
-
-        if !output.status.success() {
-            bail!(
-                "git command failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            );
-        }
-
-        Ok(())
-    }
-
     /// Push a commit directly to a remote branch without creating a local branch
     pub async fn push_commit_to_branch(&self, commit_id: &CommitId, branch: &str) -> Result<()> {
         ensure!(!["main", "master", "dev", "development", "stage", "staging"].contains(&branch));
