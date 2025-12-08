@@ -82,10 +82,7 @@ async fn main() -> Result<()> {
         Some(Commands::Restack { revision }) => {
             app.cmd_restack(&revision, &mut std::io::stdout()).await?
         }
-        Some(Commands::Status) | None => {
-            app.cmd_status(&mut std::io::stdout(), &mut std::io::stderr())
-                .await?
-        }
+        Some(Commands::Status) | None => app.cmd_status(&mut std::io::stdout()).await?,
     }
 
     Ok(())

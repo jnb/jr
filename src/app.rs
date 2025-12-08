@@ -1,28 +1,29 @@
 use std::path;
+use std::sync::Arc;
 
 use anyhow::Result;
-use anyhow::anyhow;
 use anyhow::bail;
 
 use crate::clients::git::GitClient;
 use crate::clients::github::GithubClient;
 use crate::clients::jujutsu::JujutsuClient;
 use crate::config::Config;
+use crate::stack::Stack;
 
 pub struct App {
-    pub config: Config,
-    pub gh: GithubClient,
-    pub jj: JujutsuClient,
-    pub git: GitClient,
+    pub config: Arc<Config>,
+    pub gh: Arc<GithubClient>,
+    pub jj: Arc<JujutsuClient>,
+    pub git: Arc<GitClient>,
 }
 
 impl App {
     pub fn new(config: Config, gh: GithubClient, path: path::PathBuf) -> Self {
         Self {
-            config,
-            gh,
-            jj: JujutsuClient::new(path.clone()),
-            git: GitClient::new(path),
+            config: Arc::new(config),
+            gh: Arc::new(gh),
+            jj: Arc::new(JujutsuClient::new(path.clone())),
+            git: Arc::new(GitClient::new(path)),
         }
     }
 }
@@ -83,77 +84,53 @@ impl App {
         bail!("Parent commit has no PR branch. Create parent PR first (bottom-up).")
     }
 
-    /// Check if any parent PRs in the stack are outdated or need restacking
-    /// Returns an error if any parent PR:
-    /// - Has a local single commit diff that doesn't match cumulative remote diff (needs updating)
-    /// - Has a base branch that has moved forward (needs restacking)
+    /// Check if any parent PRs in the stack are outdated or need restacking.
     pub(crate) async fn check_parent_prs_up_to_date(&self, revision: &str) -> Result<()> {
-        // Get all changes in the stack from revision back to trunk
         let commit = self.jj.get_commit(revision).await?;
-        let stack_changes = self.jj.get_stack_ancestors(&commit.commit_id.0).await?;
-
-        // Fetch all branches once
-        let all_branches = self
-            .git
-            .find_branches_with_prefix(&self.config.github_branch_prefix)
+        let stack_changes = self
+            .jj
+            .get_stack_ancestors_exclusive(&commit.commit_id.0)
             .await?;
 
-        // Collect all branches that exist in the stack (excluding current revision)
-        let branches_to_check: Vec<_> = stack_changes
-            .iter()
-            .filter(|stack_commit| stack_commit.commit_id != commit.commit_id)
-            .filter_map(|stack_commit| {
-                let expected_branch = stack_commit
-                    .change_id
-                    .branch_name(&self.config.github_branch_prefix);
-                if all_branches.contains(&expected_branch) {
-                    Some((stack_commit, expected_branch))
-                } else {
-                    None
-                }
-            })
-            .collect();
+        let stack = Stack::new(
+            self.config.clone(),
+            self.jj.clone(),
+            self.gh.clone(),
+            self.git.clone(),
+            stack_changes.clone(),
+        )
+        .await?;
 
-        // Fetch all pr_diffs in parallel
-        let pr_diff_futures: Vec<_> = branches_to_check
+        for (_commit, status) in stack
+            .commits
             .iter()
-            .map(|(_, branch)| async move {
-                let diff = self.gh.pr_diff(branch).await;
-                (branch.clone(), diff)
-            })
-            .collect();
-        let pr_diff_results = futures_util::future::join_all(pr_diff_futures).await;
-
-        // Check each change in the stack
-        for ((stack_commit, expected_branch), (_, pr_diff_result)) in
-            branches_to_check.iter().zip(pr_diff_results.iter())
+            .rev()
+            .zip(stack.sync_statuses().await?.iter().rev())
         {
-            // Get the commit for this change
-            let commit_in_stack = self.jj.get_commit(&stack_commit.change_id.0).await?;
-
-            // Check 1: Compare local single commit diff vs cumulative PR diff from GitHub
-            let local_diff = self.git.get_commit_diff(&commit_in_stack.commit_id).await?;
-            let pr_diff = pr_diff_result.as_ref().map_err(|e| anyhow!("{}", e))?;
-
-            if &local_diff != pr_diff {
-                bail!(
-                    "Cannot update PR: parent PR {} is out of date. Update parent PRs first (starting from the bottom of the stack).",
-                    expected_branch
-                );
-            }
-
-            // Check 2: Check if the base branch has moved forward (parent needs restacking)
-            let pr_tip = self.git.get_branch_tip(expected_branch).await?;
-            let base_branch = self.find_previous_branch(&stack_commit.change_id.0).await?;
-            let base_tip = self.git.get_branch_tip(&base_branch).await?;
-            let base_has_changed = !self.git.is_ancestor(&base_tip, &pr_tip).await?;
-
-            if base_has_changed {
-                bail!(
-                    "Cannot update PR: parent PR {} needs restacking. Its base branch '{}' has been updated. Run 'jr restack' on the parent first.",
-                    expected_branch,
-                    base_branch
-                );
+            match status {
+                crate::stack::SyncStatus::Unknown => {
+                    bail!("Parent commit has no PR branch. Create parent PR first (bottom-up).",);
+                }
+                crate::stack::SyncStatus::Restack => {
+                    // bail!(
+                    //     "Cannot update PR: parent PR {} needs restacking. Its base branch '{}' has been updated. Run 'jr restack' on the parent first.",
+                    //     expected_branch,
+                    //     base_branch
+                    // );
+                    bail!(
+                        "Cannot update PR: parent PR needs restacking. Its base branch has been updated. Run 'jr restack' on the parent first.",
+                    );
+                }
+                crate::stack::SyncStatus::Changed => {
+                    // bail!(
+                    //     "Cannot update PR: parent PR {} is out of date. Update parent PRs first (starting from the bottom of the stack).",
+                    //     expected_branch
+                    // );
+                    bail!(
+                        "Cannot update PR: parent PR is out of date. Update parent PRs first (starting from the bottom of the stack).",
+                    );
+                }
+                crate::stack::SyncStatus::Synced => {}
             }
         }
 

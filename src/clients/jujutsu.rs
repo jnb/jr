@@ -22,7 +22,7 @@ pub struct JujutsuClient {
 }
 
 /// A Jujutsu commit.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct JujutsuCommit {
     pub change_id: JujutsuChangeId,
     pub commit_id: git::CommitId,
@@ -30,11 +30,11 @@ pub struct JujutsuCommit {
     pub parent_change_ids: Vec<JujutsuChangeId>,
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct JujutsuChangeId(pub String);
 
 /// A Jujutsu commit message with title and body.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct JujutsuCommitMessage {
     pub title: Option<String>,
     pub body: Option<String>,
@@ -60,6 +60,16 @@ impl JujutsuClient {
     pub async fn get_stack_ancestors(&self, revset: &str) -> anyhow::Result<Vec<JujutsuCommit>> {
         self.get_commits(&format!("ancestors({revset}) ~ ancestors(trunk())"))
             .await
+    }
+
+    pub async fn get_stack_ancestors_exclusive(
+        &self,
+        revset: &str,
+    ) -> anyhow::Result<Vec<JujutsuCommit>> {
+        self.get_commits(&format!(
+            "ancestors({revset}) ~ ancestors(trunk()) ~ {revset}"
+        ))
+        .await
     }
 
     /// Get the trunk commit.

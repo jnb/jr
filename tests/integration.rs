@@ -161,7 +161,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     .await?;
     let app = jr::App::new(config, github, test_dir.path().into());
 
-    let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
+    let (out, _) = run_and_capture!(|out, _| app.cmd_status(out));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
     ? [CHGID]
     ? [CHGID] Gamma
@@ -195,7 +195,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     assert_snapshot_filtered!(out, INSTA_FILTERS, @"Created PR: https://github.com/[USER]/[REPO]/[PRID]");
 
     debug!("Getting status");
-    let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
+    let (out, _) = run_and_capture!(|out, _| app.cmd_status(out));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
     ? [CHGID]
     ? [CHGID] Gamma
@@ -254,7 +254,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     assert_snapshot_filtered!(out, INSTA_FILTERS, @"Created PR: https://github.com/[USER]/[REPO]/[PRID]");
 
     debug!("Getting status");
-    let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
+    let (out, _) = run_and_capture!(|out, _| app.cmd_status(out));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
     ? [CHGID]
     ? [CHGID] Gamma
@@ -272,7 +272,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     assert_snapshot_filtered!(out, INSTA_FILTERS, @"Created PR: https://github.com/[USER]/[REPO]/[PRID]");
 
     debug!("Getting status");
-    let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
+    let (out, _) = run_and_capture!(|out, _| app.cmd_status(out));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
     ? [CHGID]
     ✓ [CHGID] Gamma
@@ -291,7 +291,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     tokio::fs::write(test_dir.path().join("alpha"), "alpha1\n").await?;
 
     debug!("Getting status");
-    let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
+    let (out, _) = run_and_capture!(|out, _| app.cmd_status(out));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
     ↻ [CHGID] Gamma
       https://github.com/[USER]/[REPO]/[PRID]
@@ -326,7 +326,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     assert_snapshot_filtered!(out, INSTA_FILTERS, @"Updated PR: https://github.com/[USER]/[REPO]/[PRID]");
 
     debug!("Getting status");
-    let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
+    let (out, _) = run_and_capture!(|out, _| app.cmd_status(out));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
     ↻ [CHGID] Gamma
       https://github.com/[USER]/[REPO]/[PRID]
@@ -344,7 +344,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     let res = app
         .cmd_restack("description(Gamma) & ~remote_bookmarks()", &mut out)
         .await;
-    assert_snapshot_filtered!(res.err().unwrap(), INSTA_FILTERS, @"Cannot update PR: parent PR [BRANCH] needs restacking. Its base branch '[BRANCH]' has been updated. Run 'jr restack' on the parent first.");
+    assert_snapshot_filtered!(res.err().unwrap(), INSTA_FILTERS, @"Cannot update PR: parent PR needs restacking. Its base branch has been updated. Run 'jr restack' on the parent first.");
 
     // -------------------------------------------------------------------------
     // Restack Beta
@@ -355,7 +355,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     assert_snapshot_filtered!(out, INSTA_FILTERS, @"Updated PR: https://github.com/[USER]/[REPO]/[PRID]");
 
     debug!("Gettings status");
-    let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
+    let (out, _) = run_and_capture!(|out, _| app.cmd_status(out));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
     ↻ [CHGID] Gamma
       https://github.com/[USER]/[REPO]/[PRID]
@@ -374,7 +374,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     assert_snapshot_filtered!(out, INSTA_FILTERS, @"Updated PR: https://github.com/[USER]/[REPO]/[PRID]");
 
     debug!("Getting status");
-    let (out, _) = run_and_capture!(|out, err| app.cmd_status(out, err));
+    let (out, _) = run_and_capture!(|out, _| app.cmd_status(out));
     assert_snapshot_filtered!(out, INSTA_FILTERS, @r"
     ✓ [CHGID] Gamma
       https://github.com/[USER]/[REPO]/[PRID]

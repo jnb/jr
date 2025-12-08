@@ -14,7 +14,7 @@ pub struct GitClient {
     path: std::path::PathBuf,
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct CommitId(pub String);
 
 impl Display for CommitId {
