@@ -1,7 +1,7 @@
 use anyhow::bail;
 
 use crate::App;
-use crate::commit::JrCommit;
+use crate::commit::CommitInfo;
 
 impl App {
     /// Create a new pull request.
@@ -19,8 +19,8 @@ impl App {
         stdout: &mut impl std::io::Write,
     ) -> anyhow::Result<()> {
         self.check_parent_prs_up_to_date(revision).await?;
-
-        let commit = JrCommit::new(revision, &self.config, &self.jj, &self.gh, &self.git).await?;
+        let commit = self.jj.get_commit(revision).await?;
+        let commit = CommitInfo::new(commit, &self.config, &self.jj, &self.gh, &self.git).await?;
         if commit.pr_tip.is_some() {
             bail!("PR branch already exists: {}", commit.pr_branch);
         }

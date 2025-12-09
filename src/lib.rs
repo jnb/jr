@@ -5,7 +5,6 @@ pub mod commands;
 mod commit;
 pub mod config;
 pub mod diff_utils;
-mod stack;
 
 // Re-export App and Config from modules
 pub use app::App;

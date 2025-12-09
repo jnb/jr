@@ -1,9 +1,8 @@
-use anyhow::Context;
 use anyhow::Result;
 use anyhow::bail;
 
 use crate::App;
-use crate::diff_utils::normalize_diff;
+use crate::commit::CommitInfo;
 
 impl App {
     /// Update a pull request in the case where (i) there are local changes, and
@@ -28,59 +27,56 @@ impl App {
         message: &str,
         stdout: &mut impl std::io::Write,
     ) -> Result<()> {
-        let commit = self.jj.get_commit(revision).await?;
-
-        self.validate_not_merged_to_main(&commit).await?;
         self.check_parent_prs_up_to_date(revision).await?;
 
-        let pr_branch = commit
-            .change_id
-            .branch_name(&self.config.github_branch_prefix);
-        let old_pr_tip = self.git.get_branch_tip(&pr_branch).await.context(format!(
-            "PR branch {} does not exist. Use 'jr create' to create a new PR.",
-            pr_branch
-        ))?;
-        if !self.gh.pr_is_open(&pr_branch).await? {
+        let commit = self.jj.get_commit(revision).await?;
+        let commit = CommitInfo::new(commit, &self.config, &self.jj, &self.gh, &self.git).await?;
+
+        let Some(pr_tip) = commit.pr_tip else {
+            bail!(
+                "PR branch {} does not exist. Use 'jr create' to create a new PR.",
+                commit.pr_branch
+            );
+        };
+
+        if !self.gh.pr_is_open(&commit.pr_branch).await? {
             bail!(
                 "No open PR found for branch {}. The PR may have been closed or merged.",
-                pr_branch
+                commit.pr_branch
             );
         }
-        let base_branch = self.find_previous_branch(revision).await?;
 
-        let tree = self.git.get_tree(&commit.commit_id).await?;
-
-        let commit_diff = self.git.get_commit_diff(&commit.commit_id).await?;
-        let pr_diff = self.gh.pr_diff(&pr_branch).await?;
-        let contents_changed = normalize_diff(&commit_diff) != normalize_diff(&pr_diff);
-
-        let base_tip = self
-            .git
-            .get_branch_tip(&base_branch)
-            .await
-            .context(format!("Base branch {} does not exist", base_branch))?;
-        let base_has_changed = !self.git.is_ancestor(&base_tip, &old_pr_tip).await?;
-
-        if !contents_changed {
-            if !base_has_changed {
+        if commit.commit_diff_norm == commit.pr_diff_norm.expect("should be set") {
+            if commit.pr_contains_base {
                 bail!("No changes detected");
             } else {
                 bail!("Commit unchanged; use 'jr restack' instead");
             }
         }
 
-        let parents = if base_has_changed {
-            vec![&old_pr_tip, &base_tip]
+        let parents = if !commit.pr_contains_base {
+            vec![pr_tip, commit.base_tip.expect("should be set")]
         } else {
-            vec![&old_pr_tip]
+            vec![pr_tip]
         };
-        let new_commit = self.git.commit_tree(&tree, parents, message).await?;
-
-        self.git
-            .push_commit_to_branch(&new_commit, &pr_branch)
+        let tree = self.git.get_tree(&commit.commit.commit_id).await?;
+        let new_commit = self
+            .git
+            .commit_tree(
+                &tree,
+                parents.iter().map(|x| x).collect::<Vec<_>>(),
+                message,
+            )
             .await?;
 
-        let pr_url = self.gh.pr_edit(&pr_branch, &base_branch).await?;
+        self.git
+            .push_commit_to_branch(&new_commit, &commit.pr_branch)
+            .await?;
+
+        let pr_url = self
+            .gh
+            .pr_edit(&commit.pr_branch, &commit.base_branch)
+            .await?;
         writeln!(stdout, "Updated PR: {}", pr_url)?;
 
         Ok(())

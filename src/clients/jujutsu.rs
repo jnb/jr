@@ -193,19 +193,6 @@ impl JujutsuClient {
 // -----------------------------------------------------------------------------
 // JujutsuChangeId impl
 
-impl JujutsuChangeId {
-    pub fn branch_name(&self, prefix: &str) -> String {
-        format!(
-            "{prefix}{}",
-            &self.0[..GITHUB_CHANGE_ID_LENGTH.min(self.0.len())]
-        )
-    }
-
-    pub fn short_id(&self) -> String {
-        self.0[..4.min(self.0.len())].into()
-    }
-}
-
 impl Display for JujutsuChangeId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.0)
