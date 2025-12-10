@@ -31,7 +31,7 @@ pub struct CommitInfo {
     pub pr_diff: Option<String>,
     /// The normalized PR diff, if it exists.
     pub pr_diff_norm: Option<String>,
-    /// The name of the parent commit's PR branch (or main).
+    /// The name of the parent commit's PR branch or main.
     pub base_branch: String,
     /// The tip of the remote base branch, if it exists.
     pub base_tip: Option<CommitId>,
@@ -70,7 +70,6 @@ impl CommitInfo {
         gh: &GithubClient,
         git: &GitClient,
     ) -> anyhow::Result<Self> {
-        // let commit = jj.get_commit(rev).await?;
         let commit_diff = git.get_commit_diff(&commit.commit_id).await?;
         let commit_diff_norm = normalize_diff(&commit_diff);
         let trunk_commit = jj.get_trunk().await?;
@@ -90,13 +89,20 @@ impl CommitInfo {
         let pr_diff_norm = pr_diff.as_ref().map(|diff| normalize_diff(diff));
 
         let parent_change_id = &commit.parent_change_ids[0];
-        let base_branch = if trunk_commit.change_id == *parent_change_id {
+        let parent_commit_id = jj.get_commit(&parent_change_id.0).await?.commit_id;
+        let base_branch = if git
+            .is_ancestor(&parent_commit_id, &trunk_commit.commit_id)
+            .await?
+        {
+            // Parent is either trunk or an ancestor of trunk; in both cases
+            // return a base branch of "main" or "master" etc.
             let trunk_branches = git.get_git_remote_branches(&trunk_commit.commit_id).await?;
             if trunk_branches.is_empty() {
                 bail!("Trunk has no remote branch. Push trunk to remote first.");
             }
             trunk_branches[0].clone()
         } else {
+            // Parent is in our stack
             Self::branch_name(&commit.parent_change_ids[0], &config.github_branch_prefix)
         };
         let base_tip = git.get_branch_tip(&base_branch).await.ok();
