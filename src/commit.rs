@@ -95,11 +95,8 @@ impl CommitInfo {
             .await?
         {
             // Parent is either trunk or an ancestor of trunk; in both cases
-            // return a base branch of "main" or "master" etc.
-            let mut trunk_branches = git.get_git_remote_branches(&trunk_commit.commit_id).await?;
-            let Some(base_branch) = trunk_branches.pop() else {
-                bail!("Trunk has no remote branch. Push trunk to remote first.");
-            };
+            // return the default branch name.
+            let base_branch = git.get_default_branch().await?;
 
             // Use whatever commit we're currently branched off, not trunk().
             // This is because the base branch has advanced independently of us,

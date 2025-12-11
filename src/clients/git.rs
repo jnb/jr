@@ -246,4 +246,35 @@ impl GitClient {
 
         Ok(branches)
     }
+
+    /// Get the default branch name from the remote.
+    /// Returns the branch name (e.g., "main" or "master") without the "origin/" prefix.
+    pub async fn get_default_branch(&self) -> Result<String> {
+        let output = Command::new("git")
+            .current_dir(&self.path)
+            .args(["ls-remote", "--symref", "origin", "HEAD"])
+            .output()
+            .await
+            .context("Failed to execute git command")?;
+
+        if !output.status.success() {
+            bail!(
+                "git command failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+
+        let output_str = String::from_utf8(output.stdout)?;
+
+        // Parse output like: "ref: refs/heads/main	HEAD"
+        for line in output_str.lines() {
+            if let Some(rest) = line.strip_prefix("ref: refs/heads/")
+                && let Some(branch) = rest.split_whitespace().next()
+            {
+                return Ok(branch.to_string());
+            }
+        }
+
+        bail!("Could not determine default branch from git ls-remote output");
+    }
 }

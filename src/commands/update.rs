@@ -62,11 +62,7 @@ impl App {
         let tree = self.git.get_tree(&commit.commit.commit_id).await?;
         let new_commit = self
             .git
-            .commit_tree(
-                &tree,
-                parents.iter().map(|x| x).collect::<Vec<_>>(),
-                message,
-            )
+            .commit_tree(&tree, parents.iter().collect::<Vec<_>>(), message)
             .await?;
 
         self.git
