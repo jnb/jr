@@ -90,22 +90,31 @@ impl CommitInfo {
 
         let parent_change_id = &commit.parent_change_ids[0];
         let parent_commit_id = jj.get_commit(&parent_change_id.0).await?.commit_id;
-        let base_branch = if git
+        let (base_branch, base_tip) = if git
             .is_ancestor(&parent_commit_id, &trunk_commit.commit_id)
             .await?
         {
             // Parent is either trunk or an ancestor of trunk; in both cases
             // return a base branch of "main" or "master" etc.
-            let trunk_branches = git.get_git_remote_branches(&trunk_commit.commit_id).await?;
-            if trunk_branches.is_empty() {
+            let mut trunk_branches = git.get_git_remote_branches(&trunk_commit.commit_id).await?;
+            let Some(base_branch) = trunk_branches.pop() else {
                 bail!("Trunk has no remote branch. Push trunk to remote first.");
-            }
-            trunk_branches[0].clone()
+            };
+
+            // Use whatever commit we're currently branched off, not trunk().
+            // This is because the base branch has advanced independently of us,
+            // so merging in trunk() *when we haven't locally done so* risks
+            // silently dropping conflicting changes in the base branch.
+            let base_tip = Some(jj.get_commit(&parent_commit_id.0).await?.commit_id);
+
+            (base_branch, base_tip)
         } else {
             // Parent is in our stack
-            Self::branch_name(&commit.parent_change_ids[0], &config.github_branch_prefix)
+            let base_branch =
+                Self::branch_name(&commit.parent_change_ids[0], &config.github_branch_prefix);
+            let base_tip = git.get_branch_tip(&base_branch).await.ok();
+            (base_branch, base_tip)
         };
-        let base_tip = git.get_branch_tip(&base_branch).await.ok();
 
         let mut pr_contains_base = false;
         if let Some(base_tip) = &base_tip
