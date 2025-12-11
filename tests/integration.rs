@@ -29,6 +29,7 @@ struct TestConfig {
     github_user: String,
     github_repo: String,
     github_token: String,
+    github_default_branch: String,
 }
 
 impl TestConfig {
@@ -153,6 +154,7 @@ async fn test_stacked_workflow() -> anyhow::Result<()> {
     let config = jr::Config::new(
         GITHUB_BRANCH_PREFIX.to_string(),
         TEST_CONFIG.github_token.clone(),
+        TEST_CONFIG.github_default_branch.clone(),
     );
     let github = jr::clients::github::GithubClient::new(
         TEST_CONFIG.github_token.clone(),

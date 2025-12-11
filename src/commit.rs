@@ -95,8 +95,8 @@ impl CommitInfo {
             .await?
         {
             // Parent is either trunk or an ancestor of trunk; in both cases
-            // return the default branch name.
-            let base_branch = git.get_default_branch().await?;
+            // return the default branch name from config.
+            let base_branch = config.default_branch.clone();
 
             // Use whatever commit we're currently branched off, not trunk().
             // This is because the base branch has advanced independently of us,

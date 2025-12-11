@@ -4,6 +4,7 @@ use anyhow::Result;
 pub struct Config {
     pub github_branch_prefix: String,
     pub github_token: String,
+    pub default_branch: String,
 }
 
 impl Config {
@@ -25,12 +26,24 @@ impl Config {
             anyhow::bail!("GitHub token not found in .git/config. Run 'jr init' to configure.");
         }
 
+        let default_branch_output = std::process::Command::new("git")
+            .args(["config", "--get", "jr.defaultBranch"])
+            .output()?;
+
+        if !default_branch_output.status.success() {
+            anyhow::bail!("Default branch not found in .git/config. Run 'jr init' to configure.");
+        }
+
         let github_branch_prefix = String::from_utf8(prefix_output.stdout)?.trim().to_string();
         let github_token = String::from_utf8(token_output.stdout)?.trim().to_string();
+        let default_branch = String::from_utf8(default_branch_output.stdout)?
+            .trim()
+            .to_string();
 
         Ok(Self {
             github_branch_prefix,
             github_token,
+            default_branch,
         })
     }
 
@@ -56,14 +69,23 @@ impl Config {
             anyhow::bail!("Failed to save github_token to .git/config");
         }
 
+        let default_branch_output = std::process::Command::new("git")
+            .args(["config", "jr.defaultBranch", &self.default_branch])
+            .output()?;
+
+        if !default_branch_output.status.success() {
+            anyhow::bail!("Failed to save default_branch to .git/config");
+        }
+
         Ok(())
     }
 
     /// Create a new config with explicit values (useful for tests)
-    pub fn new(github_branch_prefix: String, github_token: String) -> Self {
+    pub fn new(github_branch_prefix: String, github_token: String, default_branch: String) -> Self {
         Self {
             github_branch_prefix,
             github_token,
+            default_branch,
         }
     }
 
@@ -72,6 +94,7 @@ impl Config {
         Self {
             github_branch_prefix: "test/".to_string(),
             github_token: "test_token".to_string(),
+            default_branch: "main".to_string(),
         }
     }
 
@@ -93,9 +116,14 @@ mod tests {
 
     #[test]
     fn test_new() {
-        let config = Config::new("custom/".to_string(), "token123".to_string());
+        let config = Config::new(
+            "custom/".to_string(),
+            "token123".to_string(),
+            "main".to_string(),
+        );
         assert_eq!(config.github_branch_prefix, "custom/");
         assert_eq!(config.github_token, "token123");
+        assert_eq!(config.default_branch, "main");
     }
 
     #[test]
